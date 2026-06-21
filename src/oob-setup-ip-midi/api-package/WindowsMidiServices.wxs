@@ -1,0 +1,108 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util='http://wixtoolset.org/schemas/v4/wxs/util'>
+
+    <?define StagingSourceRootFolder=$(env.MIDI_REPO_ROOT)build\staging ?>
+
+    <Package
+          Name="Microsoft Windows MIDI Services ipMIDI $(var.Platform)"
+          Manufacturer="Microsoft Corporation"
+          Version="1.0.15.0"
+          UpgradeCode="eab8a399-74da-4542-a69b-1d8be52a83b8"
+          Scope="perMachine"
+          Compressed="true"
+
+          >
+
+        <MediaTemplate EmbedCab="yes" />
+
+
+        <StandardDirectory Id="ProgramFiles64Folder">
+            <Directory Id="ROOTINSTALLFOLDER" Name="Windows MIDI Services">
+                <Directory Id="SERVICE_INSTALLFOLDER" Name="Service" />
+            </Directory>
+        </StandardDirectory>
+
+        <!-- Transport and other Service Plugins -->
+        <!-- Setting the SelfRegCost attribute to any positive number causes DLL Self Registration -->
+
+        <Component Id="WindowsServicePlugins"
+                   Bitness="always64"
+                   Directory="SERVICE_INSTALLFOLDER"
+                   Guid="ffcdd890-df27-4d05-a6e2-ab9679bcb688"  >
+
+            <File Source="$(StagingSourceRootFolder)\api\$(var.Platform)\Midi2.IpMidiTransport.dll" SelfRegCost="1" Vital="true" />
+            <File Source="$(StagingSourceRootFolder)\api\$(var.Platform)\Midi2.IpMidiTransport.pdb" />
+        </Component>
+
+
+        <Component Id="ConfigurationRegistryEntries"
+                Bitness="always64"
+                Directory="SERVICE_INSTALLFOLDER"
+                Guid="0efafffe-93ba-4f96-9d20-21d66cf8025f"
+                NeverOverwrite="false">
+
+            <RegistryKey Root="HKLM"
+                         Key="SOFTWARE\Microsoft\Windows MIDI Services">
+
+                <RegistryKey Key="Endpoint Processing Plugins">
+                    <!-- TODO: Any processing plugins -->
+                </RegistryKey>
+
+                <RegistryKey Key="Transport Plugins">
+
+                  <!-- Permissions users: Everyone, Administrators, LocalSystem, LocalService, NetworkService, AuthenticatedUser, Guests, CREATOR OWNER, INTERACTIVE, and Users -->
+
+                    <RegistryKey Key="Midi2IpMidiTransport">
+                        <RegistryValue Type="string" Name="CLSID" Value="{4F4E3D10-2768-429A-92F0-AAA0E8E2AC5E}">
+                          <util:PermissionEx Read="yes" User="Everyone"/>
+                          <util:PermissionEx GenericAll="yes" User="AuthenticatedUser"/>
+                        </RegistryValue>
+                        <RegistryValue Type="integer" Name="Enabled" Value="1">
+                          <util:PermissionEx Read="yes" User="Everyone"/>
+                          <util:PermissionEx GenericAll="yes" User="AuthenticatedUser"/>
+                        </RegistryValue>
+                    </RegistryKey>
+
+
+                </RegistryKey>
+            </RegistryKey>
+        </Component>
+
+      <Component Id="RestartService"
+                  Bitness="always64"
+                  Directory="SERVICE_INSTALLFOLDER"
+                  Guid="f165f8d3-c093-4bcc-b59a-389babea54f8">
+
+        <ServiceControl Id="midisrv" Name="midisrv"
+                        Start="both"
+                        Stop="both"/>
+
+      </Component>
+
+
+      <Feature Id="WindowsMIDIServices">
+        <ComponentRef Id="WindowsServicePlugins"/>
+        <ComponentRef Id="ConfigurationRegistryEntries"/>
+        <ComponentRef Id="RestartService"/>
+      </Feature>
+
+
+      <Binary Id="CustomActionBinary"
+              SourceFile="$(var.customactions.TargetDir)$(var.customactions.TargetName).CA.dll" />
+
+      <CustomAction Id="Action_TakeRegistryOwnership"
+                    Impersonate="no"
+                    Execute="deferred"
+                    BinaryRef="CustomActionBinary"
+                    DllEntry="TakeRegistryOwnership"
+                    Return="check"/>
+
+      <InstallExecuteSequence>
+        <Custom Action="Action_TakeRegistryOwnership"
+                Before="CreateFolders"
+                Condition='(NOT Installed) AND NOT (REMOVE="ALL")' />
+
+      </InstallExecuteSequence>
+
+    </Package>
+</Wix>

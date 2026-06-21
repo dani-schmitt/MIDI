@@ -27,6 +27,7 @@
         "BuildAndPublishAll",
         "T_BuildBasicLoopbackPluginInstaller",
         "T_BuildInDevelopmentServicePlugins",
+        "T_BuildIpMidiPluginInstaller",
         "T_BuildNetworkMidiInstaller",
         "T_BuildVirtualPatchBayPluginInstaller",
         "T_CreateVersionIncludes",

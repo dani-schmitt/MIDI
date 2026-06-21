@@ -122,6 +122,7 @@ class Build : NukeBuild
     AbsolutePath NetworkMidiSetupSolutionFolder => SourceRootFolder / "oob-setup-network";
     AbsolutePath VirtualPatchBaySetupSolutionFolder => SourceRootFolder / "oob-setup-virtual-patch-bay";
     AbsolutePath BasicLoopbackSetupSolutionFolder => SourceRootFolder / "oob-setup-basic-loopback";
+    AbsolutePath IpMidiSetupSolutionFolder => SourceRootFolder / "oob-setup-ip-midi";
 
 
     AbsolutePath ApiReferenceFolder => SourceRootFolder / "shared" / "api-ref";
@@ -145,6 +146,7 @@ class Build : NukeBuild
     Dictionary<string, string> BuiltNetworkMidiInstallers = new Dictionary<string, string>();
     Dictionary<string, string> BuiltVirtualPatchBayInstallers = new Dictionary<string, string>();
     Dictionary<string, string> BuiltSimpleLoopbackInstallers = new Dictionary<string, string>();
+    Dictionary<string, string> BuiltIpMidiInstallers = new Dictionary<string, string>();
 
 
     public static int Main () => Execute<Build>(x => x.BuildAndPublishAll);
@@ -315,6 +317,9 @@ class Build : NukeBuild
 
                 stagingFiles.Add(ApiSolutionFolder / "vsfiles" / servicePlatform / ServiceBuildConfiguration / $"Midi2.BasicLoopbackMidiTransport.dll");
                 stagingFiles.Add(ApiSolutionFolder / "vsfiles" / servicePlatform / ServiceBuildConfiguration / $"Midi2.BasicLoopbackMidiTransport.pdb");
+
+                stagingFiles.Add(ApiSolutionFolder / "vsfiles" / servicePlatform / ServiceBuildConfiguration / $"Midi2.IpMidiTransport.dll");
+                stagingFiles.Add(ApiSolutionFolder / "vsfiles" / servicePlatform / ServiceBuildConfiguration / $"Midi2.IpMidiTransport.pdb");
 
                 foreach (var file in stagingFiles)
                 {
@@ -580,6 +585,46 @@ class Build : NukeBuild
             }
         });
 
+    Target T_BuildIpMidiPluginInstaller => _ => _
+        .DependsOn(T_Prerequisites)
+        .DependsOn(T_BuildInDevelopmentServicePlugins)
+        .Executes(() =>
+        {
+            foreach (var platform in InstallerPlatforms)
+            {
+                UpdateSetupBundleInfoIncludeFile(platform);
+
+                string solutionDir = IpMidiSetupSolutionFolder.ToString() + @"\";
+
+                var msbuildProperties = new Dictionary<string, object>();
+                msbuildProperties.Add("Platform", platform);
+                msbuildProperties.Add("SolutionDir", solutionDir);
+
+                NuGetTasks.NuGetRestore(_ => _
+                    .SetProcessWorkingDirectory(solutionDir)
+                    .SetSource(@"https://api.nuget.org/v3/index.json")
+                    .SetSolutionDirectory(solutionDir)
+                );
+
+                MSBuildTasks.MSBuild(_ => _
+                    .SetProcessToolPath(MSBuildPath)
+                    .SetTargetPath(IpMidiSetupSolutionFolder / "midi-services-ip-midi-setup.sln")
+                    .SetMaxCpuCount(null)
+                    .SetProperties(msbuildProperties)
+                    .SetConfiguration(Configuration.Release)
+                    .SetTargets("Clean", "Rebuild")
+                    .SetVerbosity(BuildVerbosity)
+                    .EnableNodeReuse()
+                );
+
+                string newInstallerName = $"Windows MIDI Services (ipMIDI Preview) {BuildVersionFullString}-{platform.ToLower()}.exe";
+                var setupFile = IpMidiSetupSolutionFolder / "main-bundle" / "bin" / platform / Configuration.Release / "WindowsMidiServicesIpMidiSetup.exe";
+
+                setupFile.Copy(ThisReleaseFolder / newInstallerName);
+                BuiltIpMidiInstallers[platform.ToLower()] = newInstallerName;
+            }
+        });
+
 
 
 
@@ -601,6 +646,7 @@ class Build : NukeBuild
         .DependsOn(T_BuildNetworkMidiInstaller)
         .DependsOn(T_BuildVirtualPatchBayPluginInstaller)
         .DependsOn(T_BuildBasicLoopbackPluginInstaller)
+        .DependsOn(T_BuildIpMidiPluginInstaller)
         .Executes(() =>
         {
 
