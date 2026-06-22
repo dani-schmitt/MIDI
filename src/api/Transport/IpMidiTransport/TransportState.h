@@ -41,8 +41,13 @@ public:
         return m_workQueue;
     }
 
+    HRESULT InitializeNetworkEngine();
+    std::shared_ptr<IpMidiNetworkEngine> GetNetworkEngine();
+    void ShutdownNetworkEngine();
+
     HRESULT Shutdown()
     {
+        ShutdownNetworkEngine();
         m_endpointManager.reset();
         m_configurationManager.reset();
 
@@ -65,5 +70,7 @@ private:
     std::shared_ptr<MidiIpMidiDeviceTable> m_endpointTable = std::make_shared<MidiIpMidiDeviceTable>();
 
     std::shared_ptr<TransportWorkQueue> m_workQueue = std::make_shared<TransportWorkQueue>();
+    std::mutex m_networkEngineMutex;
+    std::shared_ptr<IpMidiNetworkEngine> m_networkEngine;
 
 };

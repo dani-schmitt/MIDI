@@ -42,6 +42,9 @@
     <ClCompile Include="MidiIpMidiDeviceTable.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="IpMidiNetworkEngine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Midl Include="Midi2IpMidiTransport.idl">
@@ -50,6 +53,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="vcpkg.json" />
     <None Include="Midi2.IpMidiTransport.def">
       <Filter>Source Files</Filter>
     </None>
@@ -68,6 +72,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="TransportState.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IpMidiNetworkEngine.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="TransportWorkQueue.h">

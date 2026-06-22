@@ -21,6 +21,40 @@ TransportState& TransportState::Current()
     return current;
 }
 
+HRESULT TransportState::InitializeNetworkEngine()
+{
+    std::scoped_lock lock(m_networkEngineMutex);
+
+    if (m_networkEngine == nullptr)
+    {
+        auto networkEngine = std::make_shared<IpMidiNetworkEngine>();
+        RETURN_IF_FAILED(networkEngine->Start());
+        m_networkEngine = std::move(networkEngine);
+    }
+
+    return S_OK;
+}
+
+std::shared_ptr<IpMidiNetworkEngine> TransportState::GetNetworkEngine()
+{
+    std::scoped_lock lock(m_networkEngineMutex);
+    return m_networkEngine;
+}
+
+void TransportState::ShutdownNetworkEngine()
+{
+    std::shared_ptr<IpMidiNetworkEngine> networkEngine;
+    {
+        std::scoped_lock lock(m_networkEngineMutex);
+        networkEngine = std::move(m_networkEngine);
+    }
+
+    if (networkEngine != nullptr)
+    {
+        networkEngine->Shutdown();
+    }
+}
+
 
 
 HRESULT

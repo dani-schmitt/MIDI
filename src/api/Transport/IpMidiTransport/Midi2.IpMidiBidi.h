@@ -23,6 +23,10 @@ public:
 
 private:
     std::shared_ptr<MidiIpMidiDevice> m_device;
+    std::shared_ptr<IpMidiNetworkEngine> m_networkEngine;
+    wil::com_ptr_nothrow<IMidiCallback> m_callback;
+    LONGLONG m_callbackContext{};
+    uint64_t m_callbackRegistrationId{};
 
 
     std::wstring m_endpointId{};

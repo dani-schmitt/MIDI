@@ -48,6 +48,8 @@ CMidi2IpMidiEndpointManager::Initialize(
 
     RETURN_IF_FAILED(CreateParentDevice());
 
+    RETURN_IF_FAILED(TransportState::Current().InitializeNetworkEngine());
+
     m_initialized = true;
 
     auto definition = std::make_shared<MidiIpMidiDeviceDefinition>();
@@ -57,7 +59,12 @@ CMidi2IpMidiEndpointManager::Initialize(
     definition->EndpointUniqueIdentifier = IP_MIDI_ENDPOINT_UNIQUE_ID;
     definition->InstanceIdPrefix = MIDI_IP_MIDI_INSTANCE_ID_PREFIX;
 
-    RETURN_IF_FAILED(CreateEndpoint(definition));
+    const auto createEndpointResult = CreateEndpoint(definition);
+    if (FAILED(createEndpointResult))
+    {
+        TransportState::Current().ShutdownNetworkEngine();
+        return createEndpointResult;
+    }
 
     return S_OK;
 }

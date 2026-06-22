@@ -13,6 +13,9 @@
 #define STRICT
 #endif
 
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
 #include <windows.h>
 
 #include <hstring.h>
@@ -56,6 +59,8 @@
 #include <vector>
 #include <string>
 #include <queue>
+#include <memory>
+#include <functional>
 
 #include <mmsystem.h>
 #include "SWDevice.h"
@@ -87,6 +92,8 @@ namespace internal = ::WindowsMidiServicesInternal;
 #include "swd_helpers.h"
 #include "resource_util.h"
 #include "midi_group_terminal_blocks.h"
+#include "midi_timestamp.h"
+#include "ump_helpers.h"
 
 #include "MidiXProc.h"
 
@@ -101,6 +108,7 @@ namespace internal = ::WindowsMidiServicesInternal;
 class CMidi2IpMidiEndpointManager;
 class CMidi2IpMidiBidi;
 class TransportState;
+class IpMidiNetworkEngine;
 
 #include "Midi2.IpMidiTransport.h"
 
@@ -111,6 +119,7 @@ class TransportState;
 #include "Midi2.IpMidiBidi.h"
 #include "Midi2.IpMidiEndpointManager.h"
 #include "Midi2.IpMidiConfigurationManager.h"
+#include "IpMidiNetworkEngine.h"
 #include "TransportWorkQueue.h"
 #include "TransportState.h"
 #include "Midi2.IpMidiPluginMetadataProvider.h"

@@ -29,8 +29,9 @@ CMidi2IpMidiBidi::Initialize(
         TraceLoggingWideString(endpointId, "endpoint id")
         );
 
-    UNREFERENCED_PARAMETER(Callback);
-    UNREFERENCED_PARAMETER(Context);
+    RETURN_HR_IF_NULL(E_INVALIDARG, Callback);
+    m_callback = Callback;
+    m_callbackContext = Context;
     m_endpointId = internal::NormalizeEndpointInterfaceIdWStringCopy(endpointId);
 
     HRESULT hr = S_OK;
@@ -52,6 +53,10 @@ CMidi2IpMidiBidi::Initialize(
         m_device = TransportState::Current().GetEndpointTable()->GetDeviceById(endpointId);
         RETURN_HR_IF_NULL(E_INVALIDARG, m_device);
 
+        m_networkEngine = TransportState::Current().GetNetworkEngine();
+        RETURN_HR_IF_NULL(E_UNEXPECTED, m_networkEngine);
+        RETURN_IF_FAILED(m_networkEngine->RegisterCallback(static_cast<IMidiCallback*>(this), &m_callbackRegistrationId));
+
     }
     else
     {
@@ -70,16 +75,6 @@ CMidi2IpMidiBidi::Initialize(
         return E_FAIL;
     }
 
-    TraceLoggingWrite(
-        MidiIpMidiTransportTelemetryProvider::Provider(),
-        MIDI_TRACE_EVENT_INFO,
-        TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
-        TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-        TraceLoggingPointer(this, "this"),
-        TraceLoggingWideString(L"Unable to find matching device in device table", MIDI_TRACE_EVENT_MESSAGE_FIELD),
-        TraceLoggingWideString(m_endpointId.c_str(), "endpoint id")
-    );
-
     return hr;
 }
 
@@ -95,6 +90,15 @@ CMidi2IpMidiBidi::Shutdown()
         TraceLoggingWideString(m_endpointId.c_str(), "endpoint id")
         );
 
+    if (m_networkEngine != nullptr)
+    {
+        m_networkEngine->UnregisterCallback(m_callbackRegistrationId);
+        m_networkEngine.reset();
+    }
+
+    m_callbackRegistrationId = 0;
+    m_callback.reset();
+    m_callbackContext = 0;
     m_device.reset();
 
     return S_OK;
@@ -113,24 +117,20 @@ CMidi2IpMidiBidi::SendMidiMessage(
 {
 
     UNREFERENCED_PARAMETER(optionFlags);
-    UNREFERENCED_PARAMETER(Message);
-    UNREFERENCED_PARAMETER(Size);
-    UNREFERENCED_PARAMETER(Position);
-
-    return S_OK;
+    RETURN_HR_IF_NULL(E_INVALIDARG, Message);
+    RETURN_HR_IF_NULL(E_UNEXPECTED, m_networkEngine);
+    return m_networkEngine->QueueOutgoingUmp(Message, Size, Position);
 }
 #pragma pop_macro("SendMessage")
 
 _Use_decl_annotations_
-HRESULT
-CMidi2IpMidiBidi::Callback(
-    MessageOptionFlags /*optionFlags*/ ,
-    PVOID /*Message*/ ,
-    UINT /*Size*/ ,
-    LONGLONG /*Position*/ ,
-    LONGLONG /*Context*/
-)
+HRESULT CMidi2IpMidiBidi::Callback(
+    MessageOptionFlags optionFlags,
+    PVOID message,
+    UINT size,
+    LONGLONG position,
+    LONGLONG /*context*/)
 {
-
-    return S_OK;
+    RETURN_HR_IF_NULL(E_UNEXPECTED, m_callback);
+    return m_callback->Callback(optionFlags, message, size, position, m_callbackContext);
 }
