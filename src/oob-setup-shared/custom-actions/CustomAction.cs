@@ -95,6 +95,81 @@ namespace custom_actions
             }
         }
 
+        private static bool RunProcess(Session session, string fileName, string arguments, int timeoutMS = 5000, bool ignoreExitCode = false)
+        {
+            session.Log($"RunProcess: \"{fileName}\" {arguments}");
+
+            using (Process process = new Process())
+            {
+                ProcessStartInfo info = new ProcessStartInfo();
+                info.FileName = fileName;
+                info.UseShellExecute = false;
+                info.Arguments = arguments;
+                info.RedirectStandardOutput = true;
+                info.RedirectStandardError = true;
+                info.CreateNoWindow = true;
+
+                process.StartInfo = info;
+
+                var OnOutputDataReceived = new DataReceivedEventHandler((sender, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        session.Log(" INFO >> " + e.Data);
+                    }
+                });
+
+                var OnErrorDataReceived = new DataReceivedEventHandler((sender, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        session.Log(" ERR >> " + e.Data);
+                    }
+                });
+
+                process.OutputDataReceived += OnOutputDataReceived;
+                process.ErrorDataReceived += OnErrorDataReceived;
+
+                if (process.Start())
+                {
+                    process.BeginErrorReadLine();
+                    process.BeginOutputReadLine();
+
+                    if (!process.WaitForExit(timeoutMS))
+                    {
+                        session.Log($"ERROR: Process \"{fileName}\" {arguments} did not complete within {timeoutMS} milliseconds. Killing.");
+
+                        process.Kill();
+                        return false;
+                    }
+
+                    process.CancelErrorRead();
+                    process.CancelOutputRead();
+
+                    var exitCode = process.ExitCode;
+
+                    if (exitCode != 0 && !ignoreExitCode)
+                    {
+                        session.Log($"ERROR: Process \"{fileName}\" {arguments} exited with code {exitCode}.");
+                        return false;
+                    }
+
+                    session.Log($"RunProcess: Exit code {exitCode}.");
+                    return true;
+                }
+                else
+                {
+                    session.Log($"ERROR: Unable to start process \"{fileName}\" {arguments}");
+                    return false;
+                }
+            }
+        }
+
+        private static string QuoteArgument(string value)
+        {
+            return "\"" + value.Replace("\"", "\\\"") + "\"";
+        }
+
         // the /A is for Administrators group. Otherwise, it goes to a workgroup account
         private static bool TakeOwnershipOfFile(Session session, string fullFilePath)
         {
@@ -418,6 +493,114 @@ namespace custom_actions
             session.Log("RemoveInBoxService: Completed");
 
             return ActionResult.Success;
+        }
+
+        [CustomAction]
+        public static ActionResult ConfigureMidiServiceForIpMidi(Session session)
+        {
+            session.Log("ConfigureMidiServiceForIpMidi: Started");
+
+            try
+            {
+                string scPath = Path.Combine(Environment.SystemDirectory, "sc.exe");
+
+                if (!RunProcess(session, scPath, "config midisrv obj= LocalSystem", 20000))
+                {
+                    session.Log("ERROR: ConfigureMidiServiceForIpMidi: Unable to configure midisrv to run as LocalSystem.");
+                    return ActionResult.Failure;
+                }
+
+                session.Log("ConfigureMidiServiceForIpMidi: Completed");
+                return ActionResult.Success;
+            }
+            catch (Exception ex)
+            {
+                session.Log("ERROR: ConfigureMidiServiceForIpMidi: Exception " + ex.ToString());
+                return ActionResult.Failure;
+            }
+        }
+
+        [CustomAction]
+        public static ActionResult ConfigureIpMidiFirewallRules(Session session)
+        {
+            session.Log("ConfigureIpMidiFirewallRules: Started");
+
+            try
+            {
+                string netshPath = Path.Combine(Environment.SystemDirectory, "netsh.exe");
+                string midiServicePath = Path.Combine(Environment.SystemDirectory, "midisrv.exe");
+
+                const string inboundRuleName = "Windows MIDI Services ipMIDI in UDP 21928-21947";
+                const string outboundRuleName = "Windows MIDI Services ipMIDI out UDP 21928-21947";
+
+                // Make the action idempotent. Deleting a missing rule returns a non-zero exit code, so ignore that.
+                RunProcess(session, netshPath, $"advfirewall firewall delete rule name={QuoteArgument(inboundRuleName)}", 20000, ignoreExitCode: true);
+                RunProcess(session, netshPath, $"advfirewall firewall delete rule name={QuoteArgument(outboundRuleName)}", 20000, ignoreExitCode: true);
+
+                string inboundArguments =
+                    "advfirewall firewall add rule " +
+                    $"name={QuoteArgument(inboundRuleName)} " +
+                    "dir=in action=allow profile=any " +
+                    $"program={QuoteArgument(midiServicePath)} " +
+                    "protocol=UDP localport=21928-21947 " +
+                    "description=\"Allow incoming ipMIDI UDP traffic for Windows MIDI Services\"";
+
+                string outboundArguments =
+                    "advfirewall firewall add rule " +
+                    $"name={QuoteArgument(outboundRuleName)} " +
+                    "dir=out action=allow profile=any " +
+                    $"program={QuoteArgument(midiServicePath)} " +
+                    "protocol=UDP remoteport=21928-21947 " +
+                    "description=\"Allow outgoing ipMIDI UDP traffic for Windows MIDI Services\"";
+
+                if (!RunProcess(session, netshPath, inboundArguments, 20000))
+                {
+                    session.Log("ERROR: ConfigureIpMidiFirewallRules: Unable to add inbound firewall rule.");
+                    return ActionResult.Failure;
+                }
+
+                if (!RunProcess(session, netshPath, outboundArguments, 20000))
+                {
+                    session.Log("ERROR: ConfigureIpMidiFirewallRules: Unable to add outbound firewall rule.");
+                    return ActionResult.Failure;
+                }
+
+                session.Log("ConfigureIpMidiFirewallRules: Completed");
+                return ActionResult.Success;
+            }
+            catch (Exception ex)
+            {
+                session.Log("ERROR: ConfigureIpMidiFirewallRules: Exception " + ex.ToString());
+                return ActionResult.Failure;
+            }
+        }
+
+        [CustomAction]
+        public static ActionResult RemoveIpMidiFirewallRules(Session session)
+        {
+            session.Log("RemoveIpMidiFirewallRules: Started");
+
+            try
+            {
+                string netshPath = Path.Combine(Environment.SystemDirectory, "netsh.exe");
+
+                const string inboundRuleName = "Windows MIDI Services ipMIDI in UDP 21928-21947";
+                const string outboundRuleName = "Windows MIDI Services ipMIDI out UDP 21928-21947";
+
+                // Firewall rules may already be absent, so ignore non-zero exit codes on uninstall cleanup.
+                RunProcess(session, netshPath, $"advfirewall firewall delete rule name={QuoteArgument(inboundRuleName)}", 20000, ignoreExitCode: true);
+                RunProcess(session, netshPath, $"advfirewall firewall delete rule name={QuoteArgument(outboundRuleName)}", 20000, ignoreExitCode: true);
+
+                session.Log("RemoveIpMidiFirewallRules: Completed");
+                return ActionResult.Success;
+            }
+            catch (Exception ex)
+            {
+                session.Log("ERROR: RemoveIpMidiFirewallRules: Exception " + ex.ToString());
+
+                // Do not fail uninstall if cleanup cannot remove already-missing firewall rules.
+                return ActionResult.Success;
+            }
         }
             
     }

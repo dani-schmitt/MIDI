@@ -97,10 +97,43 @@
                     DllEntry="TakeRegistryOwnership"
                     Return="check"/>
 
+      <CustomAction Id="Action_ConfigureMidiServiceForIpMidi"
+                    Impersonate="no"
+                    Execute="deferred"
+                    BinaryRef="CustomActionBinary"
+                    DllEntry="ConfigureMidiServiceForIpMidi"
+                    Return="check"/>
+
+      <CustomAction Id="Action_ConfigureIpMidiFirewallRules"
+                    Impersonate="no"
+                    Execute="deferred"
+                    BinaryRef="CustomActionBinary"
+                    DllEntry="ConfigureIpMidiFirewallRules"
+                    Return="check"/>
+
+      <CustomAction Id="Action_RemoveIpMidiFirewallRules"
+                    Impersonate="no"
+                    Execute="deferred"
+                    BinaryRef="CustomActionBinary"
+                    DllEntry="RemoveIpMidiFirewallRules"
+                    Return="ignore"/>
+
       <InstallExecuteSequence>
         <Custom Action="Action_TakeRegistryOwnership"
                 Before="CreateFolders"
                 Condition='(NOT Installed) AND NOT (REMOVE="ALL")' />
+
+        <Custom Action="Action_ConfigureMidiServiceForIpMidi"
+                After="StopServices"
+                Condition='NOT (REMOVE="ALL")' />
+
+        <Custom Action="Action_ConfigureIpMidiFirewallRules"
+                After="Action_ConfigureMidiServiceForIpMidi"
+                Condition='NOT (REMOVE="ALL")' />
+
+        <Custom Action="Action_RemoveIpMidiFirewallRules"
+                Before="RemoveFiles"
+                Condition='REMOVE="ALL"' />
 
       </InstallExecuteSequence>
 
