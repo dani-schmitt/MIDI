@@ -15,6 +15,8 @@
 struct MidiIpMidiDeviceDefinition
 {
     GUID AssociationId{};
+    uint8_t PortIndex{};
+    uint16_t UdpPort{};
 
     std::wstring EndpointName{};
     std::wstring EndpointDescription{};

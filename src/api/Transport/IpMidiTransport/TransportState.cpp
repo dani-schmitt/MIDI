@@ -28,7 +28,7 @@ HRESULT TransportState::InitializeNetworkEngine()
     if (m_networkEngine == nullptr)
     {
         auto networkEngine = std::make_shared<IpMidiNetworkEngine>();
-        RETURN_IF_FAILED(networkEngine->Start());
+        RETURN_IF_FAILED(networkEngine->Initialize());
         m_networkEngine = std::move(networkEngine);
     }
 

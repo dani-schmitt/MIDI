@@ -18,6 +18,34 @@ using namespace Microsoft::WRL::Wrappers;
 
 #define MAX_DEVICE_ID_LEN 200 // size in chars
 
+namespace
+{
+    std::wstring MakeEndpointName(uint8_t portIndex)
+    {
+        wchar_t value[32]{};
+        swprintf_s(value, L"%02u. Ethernet MIDI", static_cast<unsigned>(portIndex + 1));
+        return value;
+    }
+
+    std::wstring MakeEndpointUniqueId(uint8_t portIndex)
+    {
+        wchar_t value[32]{};
+        swprintf_s(value, L"%02u_ETHERNET_MIDI", static_cast<unsigned>(portIndex + 1));
+        return value;
+    }
+
+    void LogActualPortsWriteFailure(HRESULT hr)
+    {
+        if (FAILED(hr))
+        {
+            TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
+                TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+                TraceLoggingWideString(L"Unable to update ipMIDI ActualPorts registry value", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+                TraceLoggingHResult(hr, MIDI_TRACE_EVENT_HRESULT_FIELD));
+        }
+    }
+}
+
 GUID TransportLayerGUID = TRANSPORT_LAYER_GUID;
 
 
@@ -46,25 +74,70 @@ CMidi2IpMidiEndpointManager::Initialize(
     m_TransportTransportId = TransportLayerGUID;    // this is needed so MidiSrv can instantiate the correct transport
     m_ContainerId = m_TransportTransportId;           // we use the transport ID as the container ID for convenience
 
+    LogActualPortsWriteFailure(IpMidiRegistrySettings::WriteActualPorts(0));
     RETURN_IF_FAILED(CreateParentDevice());
-
     RETURN_IF_FAILED(TransportState::Current().InitializeNetworkEngine());
 
+    auto networkEngine = TransportState::Current().GetNetworkEngine();
+    RETURN_HR_IF_NULL(E_UNEXPECTED, networkEngine);
+
     m_initialized = true;
+    const auto wantedPorts = IpMidiRegistrySettings::ReadWantedPorts();
 
-    auto definition = std::make_shared<MidiIpMidiDeviceDefinition>();
-    definition->AssociationId = IP_MIDI_ENDPOINT_ASSOCIATION_ID;
-    definition->EndpointName = IP_MIDI_ENDPOINT_NAME;
-    definition->EndpointDescription = L"Fixed ipMIDI Ethernet endpoint placeholder.";
-    definition->EndpointUniqueIdentifier = IP_MIDI_ENDPOINT_UNIQUE_ID;
-    definition->InstanceIdPrefix = MIDI_IP_MIDI_INSTANCE_ID_PREFIX;
-
-    const auto createEndpointResult = CreateEndpoint(definition);
-    if (FAILED(createEndpointResult))
+    for (uint8_t portIndex = 0; portIndex < wantedPorts; ++portIndex)
     {
-        TransportState::Current().ShutdownNetworkEngine();
-        return createEndpointResult;
+        const auto prepareResult = networkEngine->PreparePort(portIndex);
+        if (FAILED(prepareResult))
+        {
+            TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
+                TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+                TraceLoggingWideString(L"Stopping ipMIDI port creation after network preparation failure", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+                TraceLoggingUInt8(static_cast<uint8_t>(portIndex + 1), "port number"),
+                TraceLoggingHResult(prepareResult, MIDI_TRACE_EVENT_HRESULT_FIELD));
+            break;
+        }
+
+        auto definition = std::make_shared<MidiIpMidiDeviceDefinition>();
+        definition->PortIndex = portIndex;
+        definition->UdpPort = static_cast<uint16_t>(IP_MIDI_BASE_UDP_PORT + portIndex);
+        definition->AssociationId = IP_MIDI_ENDPOINT_ASSOCIATION_IDS[portIndex];
+        definition->EndpointName = MakeEndpointName(portIndex);
+        definition->EndpointDescription = L"ipMIDI Ethernet endpoint.";
+        definition->EndpointUniqueIdentifier = MakeEndpointUniqueId(portIndex);
+        definition->InstanceIdPrefix = MIDI_IP_MIDI_INSTANCE_ID_PREFIX;
+
+        const auto createEndpointResult = CreateEndpoint(definition);
+        if (FAILED(createEndpointResult))
+        {
+            networkEngine->RemoveLastPreparedPort();
+            TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
+                TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+                TraceLoggingWideString(L"Stopping ipMIDI port creation after endpoint activation failure", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+                TraceLoggingUInt8(static_cast<uint8_t>(portIndex + 1), "port number"),
+                TraceLoggingHResult(createEndpointResult, MIDI_TRACE_EVENT_HRESULT_FIELD));
+            break;
+        }
+
+        m_createdEndpoints.push_back(std::move(definition));
     }
+
+    const auto startResult = networkEngine->Start();
+    if (FAILED(startResult))
+    {
+        for (auto endpoint = m_createdEndpoints.rbegin(); endpoint != m_createdEndpoints.rend(); ++endpoint)
+        {
+            LOG_IF_FAILED(DeleteEndpoint(*endpoint));
+            TransportState::Current().GetEndpointTable()->RemoveDevice((*endpoint)->AssociationId);
+        }
+        m_createdEndpoints.clear();
+        TransportState::Current().ShutdownNetworkEngine();
+        LogActualPortsWriteFailure(IpMidiRegistrySettings::WriteActualPorts(0));
+        m_initialized = false;
+        return startResult;
+    }
+
+    LogActualPortsWriteFailure(IpMidiRegistrySettings::WriteActualPorts(
+        static_cast<uint8_t>(m_createdEndpoints.size())));
 
     return S_OK;
 }
@@ -378,7 +451,7 @@ CMidi2IpMidiEndpointManager::CreateEndpoint(
     gtb1.FirstGroupIndex = 0;    // group indexes start at 0
     gtb1.Protocol = 0x01;        // 0x01 = MIDI 1.0
     gtb1.Direction = MIDI_GROUP_TERMINAL_BLOCK_INPUT;   // MIDI Out from user's perspective
-    gtb1.Name = IP_MIDI_ENDPOINT_NAME;
+    gtb1.Name = endpointName;
     blocks.push_back(gtb1);
 
     internal::GroupTerminalBlockInternal gtb2;
@@ -387,7 +460,7 @@ CMidi2IpMidiEndpointManager::CreateEndpoint(
     gtb2.FirstGroupIndex = 0;    // group indexes start at 0
     gtb2.Protocol = 0x01;        // 0x01 = MIDI 1.0
     gtb2.Direction = MIDI_GROUP_TERMINAL_BLOCK_OUTPUT;  // MIDI In from user's perspective
-    gtb2.Name = IP_MIDI_ENDPOINT_NAME;
+    gtb2.Name = endpointName;
     blocks.push_back(gtb2);
 
 
@@ -403,8 +476,9 @@ CMidi2IpMidiEndpointManager::CreateEndpoint(
     WindowsMidiServicesNamingLib::MidiEndpointNameTable nameTable{};
 
     RETURN_IF_FAILED(nameTable.PopulateAllEntriesForNativeUmpDevice(L"", blocks));
-    RETURN_HR_IF(E_FAIL, !nameTable.UpdateSourceEntryCustomName(0, IP_MIDI_ENDPOINT_NAME));
-    RETURN_HR_IF(E_FAIL, !nameTable.UpdateDestinationEntryCustomName(0, IP_MIDI_ENDPOINT_NAME));
+    const winrt::hstring endpointNameHString{ endpointName };
+    RETURN_HR_IF(E_FAIL, !nameTable.UpdateSourceEntryCustomName(0, endpointNameHString));
+    RETURN_HR_IF(E_FAIL, !nameTable.UpdateDestinationEntryCustomName(0, endpointNameHString));
     RETURN_IF_FAILED(nameTable.WriteProperties(interfaceDevProperties));
 
 
@@ -472,11 +546,14 @@ CMidi2IpMidiEndpointManager::Shutdown()
     );
 
 
-    // destroy and release all the devices we have created
+    TransportState::Current().ShutdownNetworkEngine();
 
-//    LOG_IF_FAILED(TransportState::Current().GetEndpointTable()->Shutdown());
-
-    TransportState::Current().Shutdown();
+    for (auto endpoint = m_createdEndpoints.rbegin(); endpoint != m_createdEndpoints.rend(); ++endpoint)
+    {
+        LOG_IF_FAILED(DeleteEndpoint(*endpoint));
+        TransportState::Current().GetEndpointTable()->RemoveDevice((*endpoint)->AssociationId);
+    }
+    m_createdEndpoints.clear();
 
     m_MidiDeviceManager.reset();
     m_MidiProtocolManager.reset();

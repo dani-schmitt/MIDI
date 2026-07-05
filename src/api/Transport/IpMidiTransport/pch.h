@@ -120,6 +120,7 @@ class IpMidiNetworkEngine;
 #include "Midi2.IpMidiEndpointManager.h"
 #include "Midi2.IpMidiConfigurationManager.h"
 #include "IpMidiNetworkEngine.h"
+#include "IpMidiRegistrySettings.h"
 #include "TransportWorkQueue.h"
 #include "TransportState.h"
 #include "Midi2.IpMidiPluginMetadataProvider.h"

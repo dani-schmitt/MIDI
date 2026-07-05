@@ -111,6 +111,13 @@
                     DllEntry="ConfigureIpMidiFirewallRules"
                     Return="check"/>
 
+      <CustomAction Id="Action_InitializeIpMidiRegistryValues"
+                    Impersonate="no"
+                    Execute="deferred"
+                    BinaryRef="CustomActionBinary"
+                    DllEntry="InitializeIpMidiRegistryValues"
+                    Return="check"/>
+
       <CustomAction Id="Action_RemoveIpMidiFirewallRules"
                     Impersonate="no"
                     Execute="deferred"
@@ -128,6 +135,10 @@
                 Condition='NOT (REMOVE="ALL")' />
 
         <Custom Action="Action_ConfigureIpMidiFirewallRules"
+                After="Action_InitializeIpMidiRegistryValues"
+                Condition='NOT (REMOVE="ALL")' />
+
+        <Custom Action="Action_InitializeIpMidiRegistryValues"
                 After="Action_ConfigureMidiServiceForIpMidi"
                 Condition='NOT (REMOVE="ALL")' />
 

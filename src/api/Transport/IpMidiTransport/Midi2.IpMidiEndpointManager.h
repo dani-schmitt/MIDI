@@ -61,5 +61,6 @@ private:
 
     wil::com_ptr_nothrow<IMidiDeviceManager> m_MidiDeviceManager;
     wil::com_ptr_nothrow<IMidiEndpointProtocolManager> m_MidiProtocolManager;
+    std::vector<std::shared_ptr<MidiIpMidiDeviceDefinition>> m_createdEndpoints;
 
 };

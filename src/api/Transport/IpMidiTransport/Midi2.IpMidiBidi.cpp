@@ -52,10 +52,11 @@ CMidi2IpMidiBidi::Initialize(
 
         m_device = TransportState::Current().GetEndpointTable()->GetDeviceById(endpointId);
         RETURN_HR_IF_NULL(E_INVALIDARG, m_device);
+        m_portIndex = m_device->Definition->PortIndex;
 
         m_networkEngine = TransportState::Current().GetNetworkEngine();
         RETURN_HR_IF_NULL(E_UNEXPECTED, m_networkEngine);
-        RETURN_IF_FAILED(m_networkEngine->RegisterCallback(static_cast<IMidiCallback*>(this), &m_callbackRegistrationId));
+        RETURN_IF_FAILED(m_networkEngine->RegisterCallback(m_portIndex, static_cast<IMidiCallback*>(this), &m_callbackRegistrationId));
 
     }
     else
@@ -92,7 +93,7 @@ CMidi2IpMidiBidi::Shutdown()
 
     if (m_networkEngine != nullptr)
     {
-        m_networkEngine->UnregisterCallback(m_callbackRegistrationId);
+        m_networkEngine->UnregisterCallback(m_portIndex, m_callbackRegistrationId);
         m_networkEngine.reset();
     }
 
@@ -119,7 +120,7 @@ CMidi2IpMidiBidi::SendMidiMessage(
     UNREFERENCED_PARAMETER(optionFlags);
     RETURN_HR_IF_NULL(E_INVALIDARG, Message);
     RETURN_HR_IF_NULL(E_UNEXPECTED, m_networkEngine);
-    return m_networkEngine->QueueOutgoingUmp(Message, Size, Position);
+    return m_networkEngine->QueueOutgoingUmp(m_portIndex, Message, Size, Position);
 }
 #pragma pop_macro("SendMessage")
 

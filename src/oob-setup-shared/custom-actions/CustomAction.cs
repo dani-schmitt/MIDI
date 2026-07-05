@@ -521,6 +521,48 @@ namespace custom_actions
         }
 
         [CustomAction]
+        public static ActionResult InitializeIpMidiRegistryValues(Session session)
+        {
+            session.Log("InitializeIpMidiRegistryValues: Started");
+
+            try
+            {
+                using (RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
+                using (RegistryKey parameters = localMachine.CreateSubKey(
+                    @"SOFTWARE\nerds.de\ipMIDI\Parameters",
+                    RegistryKeyPermissionCheck.ReadWriteSubTree))
+                {
+                    if (parameters == null)
+                    {
+                        session.Log("ERROR: InitializeIpMidiRegistryValues: Unable to create Parameters key.");
+                        return ActionResult.Failure;
+                    }
+
+                    EnsureRegistryDword(parameters, "WantedPorts", 1);
+                    EnsureRegistryDword(parameters, "ActualPorts", 0);
+                    EnsureRegistryDword(parameters, "MuteMask", 0);
+                    EnsureRegistryDword(parameters, "Loopback", 0);
+                }
+
+                session.Log("InitializeIpMidiRegistryValues: Completed");
+                return ActionResult.Success;
+            }
+            catch (Exception ex)
+            {
+                session.Log("ERROR: InitializeIpMidiRegistryValues: Exception " + ex.ToString());
+                return ActionResult.Failure;
+            }
+        }
+
+        private static void EnsureRegistryDword(RegistryKey key, string valueName, int defaultValue)
+        {
+            if (key.GetValue(valueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames) == null)
+            {
+                key.SetValue(valueName, defaultValue, RegistryValueKind.DWord);
+            }
+        }
+
+        [CustomAction]
         public static ActionResult ConfigureIpMidiFirewallRules(Session session)
         {
             session.Log("ConfigureIpMidiFirewallRules: Started");

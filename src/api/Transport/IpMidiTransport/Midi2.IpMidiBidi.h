@@ -27,6 +27,7 @@ private:
     wil::com_ptr_nothrow<IMidiCallback> m_callback;
     LONGLONG m_callbackContext{};
     uint64_t m_callbackRegistrationId{};
+    uint8_t m_portIndex{};
 
 
     std::wstring m_endpointId{};

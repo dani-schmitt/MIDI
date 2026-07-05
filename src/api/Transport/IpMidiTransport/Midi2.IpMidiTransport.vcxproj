@@ -389,6 +389,7 @@
   <ItemGroup>
     <ClCompile Include="MidiIpMidiDeviceTable.cpp" />
     <ClCompile Include="IpMidiNetworkEngine.cpp" />
+    <ClCompile Include="IpMidiRegistrySettings.cpp" />
     <ClCompile Include="TransportState.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="Midi2.IpMidiTransport.cpp" />
@@ -410,6 +411,7 @@
   <ItemGroup>
     <ClInclude Include="TransportState.h" />
     <ClInclude Include="IpMidiNetworkEngine.h" />
+    <ClInclude Include="IpMidiRegistrySettings.h" />
     <ClInclude Include="TransportWorkQueue.h" />
     <ClInclude Include="ip_midi_transport_defs.h" />
     <ClInclude Include="dllmain.h" />
