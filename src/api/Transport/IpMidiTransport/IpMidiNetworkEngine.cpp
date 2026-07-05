@@ -3,7 +3,7 @@
 
 #include "pch.h"
 
-HRESULT IpMidiNetworkEngine::Initialize()
+HRESULT IpMidiNetworkEngine::Initialize(bool loopbackEnabled)
 {
     std::scoped_lock lifecycleLock(m_lifecycleMutex);
     if (m_initialized)
@@ -11,6 +11,7 @@ HRESULT IpMidiNetworkEngine::Initialize()
         return S_OK;
     }
 
+    m_loopbackEnabled = loopbackEnabled;
     RETURN_IF_FAILED(CreateSharedResources());
     m_initialized = true;
     m_stopping = true;
@@ -36,7 +37,7 @@ HRESULT IpMidiNetworkEngine::CreateSharedResources()
     }
 
     u_char multicastTtl = 1;
-    u_char multicastLoopback = 0;
+    u_char multicastLoopback = m_loopbackEnabled ? 1 : 0;
     if (setsockopt(m_sendSocket, IPPROTO_IP, IP_MULTICAST_TTL,
             reinterpret_cast<char*>(&multicastTtl), sizeof(multicastTtl)) == SOCKET_ERROR ||
         setsockopt(m_sendSocket, IPPROTO_IP, IP_MULTICAST_LOOP,
@@ -260,6 +261,7 @@ void IpMidiNetworkEngine::CloseReceiveResources(PortContext& port)
 
 void IpMidiNetworkEngine::CloseSharedResources()
 {
+    std::scoped_lock sendSocketLock(m_sendSocketMutex);
     if (m_sendSocket != INVALID_SOCKET)
     {
         closesocket(m_sendSocket);
@@ -275,6 +277,26 @@ void IpMidiNetworkEngine::CloseSharedResources()
         WSACleanup();
         m_winsockStarted = false;
     }
+}
+
+HRESULT IpMidiNetworkEngine::SetLoopbackEnabled(bool enabled)
+{
+    std::scoped_lock sendSocketLock(m_sendSocketMutex);
+    RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_SERVICE_NOT_ACTIVE), m_stopping || m_sendSocket == INVALID_SOCKET);
+
+    const u_char multicastLoopback = enabled ? 1 : 0;
+    if (setsockopt(m_sendSocket, IPPROTO_IP, IP_MULTICAST_LOOP,
+        reinterpret_cast<char const*>(&multicastLoopback), sizeof(multicastLoopback)) == SOCKET_ERROR)
+    {
+        return HRESULT_FROM_WIN32(WSAGetLastError());
+    }
+
+    m_loopbackEnabled = enabled;
+    TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_INFO,
+        TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+        TraceLoggingWideString(L"ipMIDI local multicast loopback changed", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+        TraceLoggingBool(enabled, "enabled"));
+    return S_OK;
 }
 
 void IpMidiNetworkEngine::RefreshLocalIpv4Addresses()
@@ -578,7 +600,7 @@ void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
                 ++port.MalformedIncomingCount;
                 continue;
             }
-            if (IsLocalAddress(source.sin_addr.s_addr)) continue;
+            if (!m_loopbackEnabled && IsLocalAddress(source.sin_addr.s_addr)) continue;
 
             packet.Length = static_cast<uint16_t>(received);
             packet.Timestamp = internal::GetCurrentMidiTimestamp();

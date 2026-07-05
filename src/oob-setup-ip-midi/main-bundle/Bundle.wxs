@@ -16,7 +16,7 @@
     <!--<Bundle Name="Microsoft Windows MIDI Services (Developer Preview 2)" -->
     <Bundle Name="Windows MIDI Services ipMIDI Preview"
             Manufacturer="Microsoft Corporation"
-            Version="$(SetupVersionNumber)"
+            Version="1.0.0-preview.1.25"
             UpgradeCode="410c75f8-4aa0-4e65-86d1-ed76df1e7dff">
 
         <!-- Require Dev Mode to be turned on to run this installer -->

@@ -41,7 +41,7 @@ public:
         return m_workQueue;
     }
 
-    HRESULT InitializeNetworkEngine();
+    HRESULT InitializeNetworkEngine(_In_ bool loopbackEnabled);
     std::shared_ptr<IpMidiNetworkEngine> GetNetworkEngine();
     void ShutdownNetworkEngine();
 

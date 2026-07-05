@@ -33,7 +33,7 @@ struct IpMidiPacket
 class IpMidiNetworkEngine
 {
 public:
-    HRESULT Initialize();
+    HRESULT Initialize(_In_ bool loopbackEnabled);
     HRESULT PreparePort(_In_ uint8_t portIndex);
     void RemoveLastPreparedPort();
     HRESULT Start();
@@ -48,6 +48,9 @@ public:
         _In_ LONGLONG timestamp);
     HRESULT RegisterCallback(_In_ uint8_t portIndex, _In_ IMidiCallback* callback, _Out_ uint64_t* registrationId);
     void UnregisterCallback(_In_ uint8_t portIndex, _In_ uint64_t registrationId);
+
+    HRESULT SetLoopbackEnabled(_In_ bool enabled);
+    bool LoopbackEnabled() const noexcept { return m_loopbackEnabled.load(); }
 
 private:
     struct CallbackRegistration
@@ -113,6 +116,7 @@ private:
     PortContext* GetPort(_In_ uint8_t portIndex) const noexcept;
 
     std::mutex m_lifecycleMutex;
+    std::mutex m_sendSocketMutex;
     mutable std::mutex m_outgoingMutex;
     mutable std::mutex m_incomingMutex;
     std::condition_variable m_outgoingWakeup;
@@ -132,6 +136,7 @@ private:
     bool m_initialized{};
     bool m_started{};
     std::atomic<bool> m_stopping{ true };
+    std::atomic<bool> m_loopbackEnabled{};
 
     std::jthread m_senderThread;
     std::jthread m_receiverThread;

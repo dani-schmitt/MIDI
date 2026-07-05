@@ -76,7 +76,7 @@ CMidi2IpMidiEndpointManager::Initialize(
 
     LogActualPortsWriteFailure(IpMidiRegistrySettings::WriteActualPorts(0));
     RETURN_IF_FAILED(CreateParentDevice());
-    RETURN_IF_FAILED(TransportState::Current().InitializeNetworkEngine());
+    RETURN_IF_FAILED(TransportState::Current().InitializeNetworkEngine(IpMidiRegistrySettings::ReadLoopback()));
 
     auto networkEngine = TransportState::Current().GetNetworkEngine();
     RETURN_HR_IF_NULL(E_UNEXPECTED, networkEngine);

@@ -48,6 +48,45 @@ uint8_t IpMidiRegistrySettings::ReadWantedPorts() noexcept
     return static_cast<uint8_t>(value);
 }
 
+bool IpMidiRegistrySettings::ReadLoopback() noexcept
+{
+    wil::unique_hkey key;
+    const auto openResult = RegOpenKeyExW(
+        HKEY_LOCAL_MACHINE,
+        ParametersKey,
+        0,
+        KEY_QUERY_VALUE | KEY_WOW64_64KEY,
+        key.put());
+
+    if (openResult != ERROR_SUCCESS)
+    {
+        TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_WARNING,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"Loopback registry key unavailable; using disabled default", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingUInt32(openResult, "registry error"));
+        return false;
+    }
+
+    DWORD value{};
+    DWORD valueType{};
+    DWORD valueSize{ sizeof(value) };
+    const auto queryResult = RegQueryValueExW(
+        key.get(), L"Loopback", nullptr, &valueType, reinterpret_cast<BYTE*>(&value), &valueSize);
+
+    if (queryResult != ERROR_SUCCESS || valueType != REG_DWORD || valueSize != sizeof(value) || value > 1)
+    {
+        TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_WARNING,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"Loopback registry value invalid; using disabled default", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingUInt32(queryResult, "registry error"),
+            TraceLoggingUInt32(value, "registry value"),
+            TraceLoggingUInt32(valueType, "registry type"));
+        return false;
+    }
+
+    return value != 0;
+}
+
 HRESULT IpMidiRegistrySettings::WriteActualPorts(uint8_t actualPorts) noexcept
 {
     wil::unique_hkey key;
@@ -71,5 +110,31 @@ HRESULT IpMidiRegistrySettings::WriteActualPorts(uint8_t actualPorts) noexcept
     const DWORD value = actualPorts;
     const auto setResult = RegSetValueExW(
         key.get(), L"ActualPorts", 0, REG_DWORD, reinterpret_cast<BYTE const*>(&value), sizeof(value));
+    return HRESULT_FROM_WIN32(setResult);
+}
+
+HRESULT IpMidiRegistrySettings::WriteLoopback(bool enabled) noexcept
+{
+    wil::unique_hkey key;
+    DWORD disposition{};
+    const auto createResult = RegCreateKeyExW(
+        HKEY_LOCAL_MACHINE,
+        ParametersKey,
+        0,
+        nullptr,
+        REG_OPTION_NON_VOLATILE,
+        KEY_SET_VALUE | KEY_WOW64_64KEY,
+        nullptr,
+        key.put(),
+        &disposition);
+
+    if (createResult != ERROR_SUCCESS)
+    {
+        return HRESULT_FROM_WIN32(createResult);
+    }
+
+    const DWORD value = enabled ? 1 : 0;
+    const auto setResult = RegSetValueExW(
+        key.get(), L"Loopback", 0, REG_DWORD, reinterpret_cast<BYTE const*>(&value), sizeof(value));
     return HRESULT_FROM_WIN32(setResult);
 }

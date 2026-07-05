@@ -14,5 +14,9 @@ public:
     STDMETHOD(Shutdown)();
 
 private:
+    HRESULT ProcessCommand(
+        _In_ json::JsonObject const& transportObject,
+        _Inout_ json::JsonObject& responseObject) noexcept;
+
     wil::com_ptr_nothrow<IMidiDeviceManager> m_MidiDeviceManager;
 };

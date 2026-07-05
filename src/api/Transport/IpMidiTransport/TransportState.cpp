@@ -21,14 +21,14 @@ TransportState& TransportState::Current()
     return current;
 }
 
-HRESULT TransportState::InitializeNetworkEngine()
+HRESULT TransportState::InitializeNetworkEngine(bool loopbackEnabled)
 {
     std::scoped_lock lock(m_networkEngineMutex);
 
     if (m_networkEngine == nullptr)
     {
         auto networkEngine = std::make_shared<IpMidiNetworkEngine>();
-        RETURN_IF_FAILED(networkEngine->Initialize());
+        RETURN_IF_FAILED(networkEngine->Initialize(loopbackEnabled));
         m_networkEngine = std::move(networkEngine);
     }
 

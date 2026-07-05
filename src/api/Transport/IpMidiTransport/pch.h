@@ -89,6 +89,7 @@ namespace internal = ::WindowsMidiServicesInternal;
 
 #include "json_defs.h"
 #include "json_helpers.h"
+#include "json_transport_command_helper.h"
 #include "swd_helpers.h"
 #include "resource_util.h"
 #include "midi_group_terminal_blocks.h"
