@@ -56,11 +56,19 @@ HRESULT IpMidiNetworkEngine::CreateSharedResources()
         return HRESULT_FROM_WIN32(error);
     }
 
+    m_reconfigureEvent = WSACreateEvent();
+    if (m_reconfigureEvent == WSA_INVALID_EVENT)
+    {
+        const auto error = WSAGetLastError();
+        CloseSharedResources();
+        return HRESULT_FROM_WIN32(error);
+    }
+
     RefreshLocalIpv4Addresses();
     return S_OK;
 }
 
-HRESULT IpMidiNetworkEngine::PreparePort(uint8_t portIndex)
+HRESULT IpMidiNetworkEngine::PreparePort(uint8_t portIndex, bool muted)
 {
     std::scoped_lock lifecycleLock(m_lifecycleMutex);
     RETURN_HR_IF(E_UNEXPECTED, !m_initialized || m_started);
@@ -69,7 +77,11 @@ HRESULT IpMidiNetworkEngine::PreparePort(uint8_t portIndex)
     try
     {
         auto port = std::make_unique<PortContext>(portIndex);
-        RETURN_IF_FAILED(CreateReceiveResources(*port));
+        port->Muted = muted;
+        if (!muted)
+        {
+            RETURN_IF_FAILED(CreateReceiveResources(*port));
+        }
         m_ports[portIndex] = std::move(port);
         ++m_portCount;
     }
@@ -171,6 +183,7 @@ HRESULT IpMidiNetworkEngine::Start()
 
     m_stopping = false;
     WSAResetEvent(m_stopEvent);
+    WSAResetEvent(m_reconfigureEvent);
 
     if (m_portCount > 0)
     {
@@ -215,11 +228,16 @@ void IpMidiNetworkEngine::Shutdown()
     {
         WSASetEvent(m_stopEvent);
     }
+    if (m_reconfigureEvent != WSA_INVALID_EVENT)
+    {
+        WSASetEvent(m_reconfigureEvent);
+    }
     m_outgoingWakeup.notify_all();
     m_incomingWakeup.notify_all();
     m_senderThread.request_stop();
     m_receiverThread.request_stop();
     m_dispatcherThread.request_stop();
+    m_reconfigureComplete.notify_all();
 
     if (m_senderThread.joinable()) m_senderThread.join();
     if (m_receiverThread.joinable()) m_receiverThread.join();
@@ -272,6 +290,11 @@ void IpMidiNetworkEngine::CloseSharedResources()
         WSACloseEvent(m_stopEvent);
         m_stopEvent = WSA_INVALID_EVENT;
     }
+    if (m_reconfigureEvent != WSA_INVALID_EVENT)
+    {
+        WSACloseEvent(m_reconfigureEvent);
+        m_reconfigureEvent = WSA_INVALID_EVENT;
+    }
     if (m_winsockStarted)
     {
         WSACleanup();
@@ -297,6 +320,115 @@ HRESULT IpMidiNetworkEngine::SetLoopbackEnabled(bool enabled)
         TraceLoggingWideString(L"ipMIDI local multicast loopback changed", MIDI_TRACE_EVENT_MESSAGE_FIELD),
         TraceLoggingBool(enabled, "enabled"));
     return S_OK;
+}
+
+bool IpMidiNetworkEngine::IsPortMuted(uint8_t portIndex) const noexcept
+{
+    const auto port = GetPort(portIndex);
+    return port == nullptr || port->Muted.load();
+}
+
+uint32_t IpMidiNetworkEngine::MuteMask() const noexcept
+{
+    uint32_t mask{};
+    for (uint8_t index = 0; index < m_portCount; ++index)
+    {
+        if (m_ports[index]->Muted.load()) mask |= (1u << index);
+    }
+    return mask;
+}
+
+void IpMidiNetworkEngine::ResetPortData(PortContext& port)
+{
+    {
+        std::scoped_lock queueLock(m_outgoingMutex);
+        port.OutgoingQueue.clear();
+    }
+    {
+        std::scoped_lock queueLock(m_incomingMutex);
+        port.IncomingQueue.clear();
+    }
+    {
+        std::scoped_lock converterLock(port.OutgoingConverterMutex);
+        port.UmpToByteStream = umpToBytestream{};
+    }
+    {
+        std::scoped_lock converterLock(port.IncomingConverterMutex);
+        port.ByteStreamToUmp = bytestreamToUMP{};
+        port.ByteStreamToUmp.defaultGroup = 0;
+    }
+}
+
+HRESULT IpMidiNetworkEngine::SetPortMuted(uint8_t portIndex, bool muted)
+{
+    auto port = GetPort(portIndex);
+    RETURN_HR_IF(E_INVALIDARG, port == nullptr);
+    RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_SERVICE_NOT_ACTIVE), m_stopping || !m_started);
+    if (port->Muted.load() == muted) return S_OK;
+
+    std::unique_lock reconfigureLock(m_reconfigureMutex);
+    RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BUSY), m_reconfigurePending);
+
+    if (muted)
+    {
+        port->Muted = true;
+        {
+            // Wait for an already-entered sendto to finish. Future sends recheck Muted while holding this lock.
+            std::scoped_lock sendLock(port->SendMutex);
+        }
+        std::scoped_lock dispatchLock(port->CallbackDispatchMutex);
+        ResetPortData(*port);
+    }
+    else
+    {
+        // Keep the port muted while clearing state. The receiver thread will make it live
+        // immediately after recreating the receive socket, before rebuilding its wait set.
+        ResetPortData(*port);
+    }
+
+    m_reconfigurePortIndex = portIndex;
+    m_reconfigureMuted = muted;
+    m_reconfigureResult = E_PENDING;
+    m_reconfigureFinished = false;
+    m_reconfigurePending = true;
+    if (!WSASetEvent(m_reconfigureEvent))
+    {
+        m_reconfigurePending = false;
+        if (muted) port->Muted = false;
+        return HRESULT_FROM_WIN32(WSAGetLastError());
+    }
+
+    m_reconfigureComplete.wait(reconfigureLock, [this]
+        { return m_reconfigureFinished || m_stopping.load(); });
+    if (m_stopping && !m_reconfigureFinished)
+    {
+        return HRESULT_FROM_WIN32(ERROR_SERVICE_NOT_ACTIVE);
+    }
+
+    const auto result = m_reconfigureResult;
+    if (FAILED(result) && muted)
+    {
+        port->Muted = false;
+    }
+
+    if (SUCCEEDED(result))
+    {
+        TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_INFO,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"ipMIDI port mute state changed", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingUInt8(static_cast<uint8_t>(portIndex + 1), "port number"),
+            TraceLoggingBool(muted, "muted"));
+    }
+    else
+    {
+        TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"Unable to change ipMIDI port mute state", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingUInt8(static_cast<uint8_t>(portIndex + 1), "port number"),
+            TraceLoggingBool(muted, "muted"),
+            TraceLoggingHResult(result, MIDI_TRACE_EVENT_HRESULT_FIELD));
+    }
+    return result;
 }
 
 void IpMidiNetworkEngine::RefreshLocalIpv4Addresses()
@@ -359,6 +491,7 @@ HRESULT IpMidiNetworkEngine::QueueOutgoingUmp(uint8_t portIndex, PVOID message, 
     packet.Timestamp = timestamp;
     {
         std::scoped_lock converterLock(port->OutgoingConverterMutex);
+        if (port->Muted) return S_OK;
         const auto words = static_cast<uint32_t const*>(message);
         const auto wordCount = size / sizeof(uint32_t);
         for (UINT offset = 0; offset < wordCount;)
@@ -436,8 +569,10 @@ void IpMidiNetworkEngine::UnregisterCallback(uint8_t portIndex, uint64_t registr
 
 bool IpMidiNetworkEngine::TryEnqueueOutgoing(PortContext& port, IpMidiPacket const& packet)
 {
+    if (port.Muted) return false;
     {
         std::scoped_lock queueLock(m_outgoingMutex);
+        if (port.Muted) return false;
         if (port.OutgoingQueue.full())
         {
             ++port.OutgoingDropCount;
@@ -455,8 +590,10 @@ bool IpMidiNetworkEngine::TryEnqueueOutgoing(PortContext& port, IpMidiPacket con
 
 bool IpMidiNetworkEngine::TryEnqueueIncoming(PortContext& port, IpMidiPacket const& packet)
 {
+    if (port.Muted) return false;
     {
         std::scoped_lock queueLock(m_incomingMutex);
+        if (port.Muted) return false;
         if (port.IncomingQueue.full())
         {
             ++port.IncomingDropCount;
@@ -492,6 +629,11 @@ bool IpMidiNetworkEngine::TryDequeueOutgoing(uint8_t& portIndex, IpMidiPacket& p
     {
         const auto index = static_cast<uint8_t>((m_nextOutgoingPort + count) % m_portCount);
         auto& queue = m_ports[index]->OutgoingQueue;
+        if (m_ports[index]->Muted)
+        {
+            queue.clear();
+            continue;
+        }
         if (!queue.empty())
         {
             packet = queue.front();
@@ -510,6 +652,11 @@ bool IpMidiNetworkEngine::TryDequeueIncoming(uint8_t& portIndex, IpMidiPacket& p
     {
         const auto index = static_cast<uint8_t>((m_nextIncomingPort + count) % m_portCount);
         auto& queue = m_ports[index]->IncomingQueue;
+        if (m_ports[index]->Muted)
+        {
+            queue.clear();
+            continue;
+        }
         if (!queue.empty())
         {
             packet = queue.front();
@@ -540,7 +687,10 @@ void IpMidiNetworkEngine::SenderWorker(std::stop_token stopToken)
             if (!TryDequeueOutgoing(portIndex, packet)) continue;
         }
 
-        destination.sin_port = htons(m_ports[portIndex]->UdpPort);
+        auto& port = *m_ports[portIndex];
+        std::scoped_lock sendLock(port.SendMutex);
+        if (port.Muted) continue;
+        destination.sin_port = htons(port.UdpPort);
         const auto sent = sendto(m_sendSocket, reinterpret_cast<char const*>(packet.Bytes.data()), packet.Length, 0,
             reinterpret_cast<sockaddr*>(&destination), sizeof(destination));
         if (sent == SOCKET_ERROR || sent != packet.Length)
@@ -556,19 +706,72 @@ void IpMidiNetworkEngine::SenderWorker(std::stop_token stopToken)
 
 void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
 {
-    std::array<WSAEVENT, IP_MIDI_MAX_PORT_COUNT + 1> events{};
-    events[0] = m_stopEvent;
-    for (uint8_t index = 0; index < m_portCount; ++index) events[index + 1] = m_ports[index]->ReceiveEvent;
-    const DWORD eventCount = static_cast<DWORD>(m_portCount + 1);
-
     while (!stopToken.stop_requested() && !m_stopping)
     {
+        std::array<WSAEVENT, IP_MIDI_MAX_PORT_COUNT + 2> events{};
+        std::array<PortContext*, IP_MIDI_MAX_PORT_COUNT + 2> eventPorts{};
+        DWORD eventCount = 2;
+        events[0] = m_stopEvent;
+        events[1] = m_reconfigureEvent;
+        for (uint8_t index = 0; index < m_portCount; ++index)
+        {
+            auto& port = *m_ports[index];
+            if (!port.Muted && port.ReceiveEvent != WSA_INVALID_EVENT)
+            {
+                events[eventCount] = port.ReceiveEvent;
+                eventPorts[eventCount] = &port;
+                ++eventCount;
+            }
+        }
+
         const auto waitResult = WSAWaitForMultipleEvents(eventCount, events.data(), FALSE, WSA_INFINITE, FALSE);
-        if (waitResult == WSA_WAIT_FAILED) break;
+        if (waitResult == WSA_WAIT_FAILED)
+        {
+            const auto waitError = HRESULT_FROM_WIN32(WSAGetLastError());
+            std::unique_lock reconfigureLock(m_reconfigureMutex);
+            if (m_reconfigurePending)
+            {
+                m_reconfigureResult = waitError;
+                m_reconfigurePending = false;
+                m_reconfigureFinished = true;
+                reconfigureLock.unlock();
+                m_reconfigureComplete.notify_all();
+            }
+            break;
+        }
         const auto eventIndex = waitResult - WSA_WAIT_EVENT_0;
         if (eventIndex == 0 || eventIndex >= eventCount) break;
+        if (eventIndex == 1)
+        {
+            WSAResetEvent(m_reconfigureEvent);
+            std::unique_lock reconfigureLock(m_reconfigureMutex);
+            if (m_reconfigurePending)
+            {
+                auto& port = *m_ports[m_reconfigurePortIndex];
+                if (m_reconfigureMuted)
+                {
+                    CloseReceiveResources(port);
+                    m_reconfigureResult = S_OK;
+                }
+                else
+                {
+                    const auto createResult = CreateReceiveResources(port);
+                    if (SUCCEEDED(createResult))
+                    {
+                        port.Muted = false;
+                    }
+                    m_reconfigureResult = createResult;
+                }
+                m_reconfigurePending = false;
+                m_reconfigureFinished = true;
+                reconfigureLock.unlock();
+                m_reconfigureComplete.notify_all();
+            }
+            continue;
+        }
 
-        auto& port = *m_ports[eventIndex - 1];
+        auto& port = *eventPorts[eventIndex];
+        if (port.Muted) continue;
         WSANETWORKEVENTS networkEvents{};
         if (WSAEnumNetworkEvents(port.ReceiveSocket, port.ReceiveEvent, &networkEvents) == SOCKET_ERROR) continue;
         if ((networkEvents.lNetworkEvents & FD_READ) == 0 || networkEvents.iErrorCode[FD_READ_BIT] != 0) continue;
@@ -600,6 +803,7 @@ void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
                 ++port.MalformedIncomingCount;
                 continue;
             }
+            if (port.Muted) continue;
             if (!m_loopbackEnabled && IsLocalAddress(source.sin_addr.s_addr)) continue;
 
             packet.Length = static_cast<uint16_t>(received);
@@ -628,25 +832,30 @@ void IpMidiNetworkEngine::DispatcherWorker(std::stop_token stopToken)
 
 void IpMidiNetworkEngine::DispatchIncomingPacket(PortContext& port, IpMidiPacket const& packet)
 {
+    if (port.Muted) return;
     std::array<uint32_t, IP_MIDI_MAX_DATAGRAM_SIZE> umpWords{};
     size_t umpWordCount = 0;
-    for (uint16_t index = 0; index < packet.Length; ++index)
     {
-        port.ByteStreamToUmp.bytestreamParse(packet.Bytes[index]);
-        while (port.ByteStreamToUmp.availableUMP())
+        std::scoped_lock converterLock(port.IncomingConverterMutex);
+        if (port.Muted) return;
+        for (uint16_t index = 0; index < packet.Length; ++index)
         {
-            if (umpWordCount == umpWords.size())
+            port.ByteStreamToUmp.bytestreamParse(packet.Bytes[index]);
+            while (port.ByteStreamToUmp.availableUMP())
             {
-                ++port.MalformedIncomingCount;
-                return;
+                if (umpWordCount == umpWords.size())
+                {
+                    ++port.MalformedIncomingCount;
+                    return;
+                }
+                umpWords[umpWordCount++] = port.ByteStreamToUmp.readUMP();
             }
-            umpWords[umpWordCount++] = port.ByteStreamToUmp.readUMP();
         }
     }
     if (umpWordCount == 0) return;
 
     std::scoped_lock dispatchLock(port.CallbackDispatchMutex);
-    if (m_stopping) return;
+    if (m_stopping || port.Muted) return;
     for (auto const& registration : port.Callbacks)
     {
         if (registration.Id != 0 && registration.Callback != nullptr)

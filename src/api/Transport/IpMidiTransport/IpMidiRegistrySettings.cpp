@@ -6,6 +6,7 @@
 namespace
 {
     constexpr wchar_t ParametersKey[] = L"SOFTWARE\\nerds.de\\ipMIDI\\Parameters";
+    constexpr uint32_t ValidMuteMask = (1u << IP_MIDI_MAX_PORT_COUNT) - 1u;
 }
 
 uint8_t IpMidiRegistrySettings::ReadWantedPorts() noexcept
@@ -87,6 +88,38 @@ bool IpMidiRegistrySettings::ReadLoopback() noexcept
     return value != 0;
 }
 
+uint32_t IpMidiRegistrySettings::ReadMuteMask() noexcept
+{
+    wil::unique_hkey key;
+    const auto openResult = RegOpenKeyExW(
+        HKEY_LOCAL_MACHINE, ParametersKey, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, key.put());
+    if (openResult != ERROR_SUCCESS)
+    {
+        TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_WARNING,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"MuteMask registry key unavailable; using unmuted default", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingUInt32(openResult, "registry error"));
+        return 0;
+    }
+
+    DWORD value{};
+    DWORD valueType{};
+    DWORD valueSize{ sizeof(value) };
+    const auto queryResult = RegQueryValueExW(
+        key.get(), L"MuteMask", nullptr, &valueType, reinterpret_cast<BYTE*>(&value), &valueSize);
+    if (queryResult != ERROR_SUCCESS || valueType != REG_DWORD || valueSize != sizeof(value))
+    {
+        TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_WARNING,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"MuteMask registry value invalid; using unmuted default", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingUInt32(queryResult, "registry error"),
+            TraceLoggingUInt32(valueType, "registry type"));
+        return 0;
+    }
+
+    return value & ValidMuteMask;
+}
+
 HRESULT IpMidiRegistrySettings::WriteActualPorts(uint8_t actualPorts) noexcept
 {
     wil::unique_hkey key;
@@ -136,5 +169,23 @@ HRESULT IpMidiRegistrySettings::WriteLoopback(bool enabled) noexcept
     const DWORD value = enabled ? 1 : 0;
     const auto setResult = RegSetValueExW(
         key.get(), L"Loopback", 0, REG_DWORD, reinterpret_cast<BYTE const*>(&value), sizeof(value));
+    return HRESULT_FROM_WIN32(setResult);
+}
+
+HRESULT IpMidiRegistrySettings::WriteMuteMask(uint32_t muteMask) noexcept
+{
+    wil::unique_hkey key;
+    DWORD disposition{};
+    const auto createResult = RegCreateKeyExW(
+        HKEY_LOCAL_MACHINE, ParametersKey, 0, nullptr, REG_OPTION_NON_VOLATILE,
+        KEY_SET_VALUE | KEY_WOW64_64KEY, nullptr, key.put(), &disposition);
+    if (createResult != ERROR_SUCCESS)
+    {
+        return HRESULT_FROM_WIN32(createResult);
+    }
+
+    const DWORD value = muteMask & ValidMuteMask;
+    const auto setResult = RegSetValueExW(
+        key.get(), L"MuteMask", 0, REG_DWORD, reinterpret_cast<BYTE const*>(&value), sizeof(value));
     return HRESULT_FROM_WIN32(setResult);
 }

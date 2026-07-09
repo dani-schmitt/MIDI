@@ -34,7 +34,7 @@ class IpMidiNetworkEngine
 {
 public:
     HRESULT Initialize(_In_ bool loopbackEnabled);
-    HRESULT PreparePort(_In_ uint8_t portIndex);
+    HRESULT PreparePort(_In_ uint8_t portIndex, _In_ bool muted);
     void RemoveLastPreparedPort();
     HRESULT Start();
     void Shutdown();
@@ -51,6 +51,9 @@ public:
 
     HRESULT SetLoopbackEnabled(_In_ bool enabled);
     bool LoopbackEnabled() const noexcept { return m_loopbackEnabled.load(); }
+    HRESULT SetPortMuted(_In_ uint8_t portIndex, _In_ bool muted);
+    bool IsPortMuted(_In_ uint8_t portIndex) const noexcept;
+    uint32_t MuteMask() const noexcept;
 
 private:
     struct CallbackRegistration
@@ -80,6 +83,8 @@ private:
         boost::circular_buffer<IpMidiPacket> IncomingQueue;
 
         std::mutex OutgoingConverterMutex;
+        std::mutex IncomingConverterMutex;
+        std::mutex SendMutex;
         std::mutex CallbackMutex;
         std::mutex CallbackDispatchMutex;
         std::array<CallbackRegistration, IP_MIDI_MAX_CALLBACKS_PER_PORT> Callbacks{};
@@ -87,6 +92,8 @@ private:
 
         umpToBytestream UmpToByteStream;
         bytestreamToUMP ByteStreamToUmp;
+
+        std::atomic<bool> Muted{};
 
         std::atomic<uint64_t> OutgoingDropCount{};
         std::atomic<uint64_t> IncomingDropCount{};
@@ -98,6 +105,7 @@ private:
     HRESULT CreateReceiveResources(_In_ PortContext& port);
     void CloseReceiveResources(_In_ PortContext& port);
     void CloseSharedResources();
+    void ResetPortData(_In_ PortContext& port);
     void RefreshLocalIpv4Addresses();
     bool IsLocalAddress(_In_ ULONG address) const;
 
@@ -117,6 +125,8 @@ private:
 
     std::mutex m_lifecycleMutex;
     std::mutex m_sendSocketMutex;
+    std::mutex m_reconfigureMutex;
+    std::condition_variable m_reconfigureComplete;
     mutable std::mutex m_outgoingMutex;
     mutable std::mutex m_incomingMutex;
     std::condition_variable m_outgoingWakeup;
@@ -132,6 +142,12 @@ private:
 
     SOCKET m_sendSocket{ INVALID_SOCKET };
     WSAEVENT m_stopEvent{ WSA_INVALID_EVENT };
+    WSAEVENT m_reconfigureEvent{ WSA_INVALID_EVENT };
+    bool m_reconfigurePending{};
+    bool m_reconfigureFinished{};
+    uint8_t m_reconfigurePortIndex{};
+    bool m_reconfigureMuted{};
+    HRESULT m_reconfigureResult{ S_OK };
     bool m_winsockStarted{};
     bool m_initialized{};
     bool m_started{};

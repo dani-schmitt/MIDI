@@ -7,12 +7,28 @@ namespace
 {
     constexpr wchar_t GetLoopbackCommand[] = L"getLoopback";
     constexpr wchar_t SetLoopbackCommand[] = L"setLoopback";
+    constexpr wchar_t GetMuteMaskCommand[] = L"getMuteMask";
     constexpr wchar_t EnabledArgument[] = L"enabled";
+    constexpr wchar_t MutedProperty[] = L"muted";
+    constexpr wchar_t MuteMaskProperty[] = L"muteMask";
 
     void SetLoopbackResponse(json::JsonObject& responseObject, bool enabled)
     {
         internal::SetConfigurationResponseObjectSuccess(responseObject);
         responseObject.SetNamedValue(EnabledArgument, json::JsonValue::CreateBooleanValue(enabled));
+    }
+
+    void SetMuteResponse(json::JsonObject& responseObject, bool muted, uint32_t muteMask)
+    {
+        internal::SetConfigurationResponseObjectSuccess(responseObject);
+        responseObject.SetNamedValue(MutedProperty, json::JsonValue::CreateBooleanValue(muted));
+        responseObject.SetNamedValue(MuteMaskProperty, json::JsonValue::CreateNumberValue(muteMask));
+    }
+
+    void SetMuteMaskResponse(json::JsonObject& responseObject, uint32_t muteMask)
+    {
+        internal::SetConfigurationResponseObjectSuccess(responseObject);
+        responseObject.SetNamedValue(MuteMaskProperty, json::JsonValue::CreateNumberValue(muteMask));
     }
 }
 
@@ -96,6 +112,44 @@ HRESULT CMidi2IpMidiConfigurationManager::ProcessCommand(
             return S_OK;
         }
 
+        if (command.Command() == MIDI_CONFIG_JSON_TRANSPORT_COMMAND_QUERY_CAPABILITIES)
+        {
+            std::map<std::wstring, bool> capabilities{};
+            capabilities.emplace(MIDI_CONFIG_JSON_TRANSPORT_COMMAND_CAPABILITY_CUSTOMIZE_ENDPOINT, false);
+            capabilities.emplace(MIDI_CONFIG_JSON_TRANSPORT_COMMAND_CAPABILITY_CUSTOMIZE_PORTS, false);
+            capabilities.emplace(MIDI_CONFIG_JSON_TRANSPORT_COMMAND_CAPABILITY_RESTART_ENDPOINT, false);
+            capabilities.emplace(MIDI_CONFIG_JSON_TRANSPORT_COMMAND_CAPABILITY_DISCONNECT_ENDPOINT, false);
+            capabilities.emplace(MIDI_CONFIG_JSON_TRANSPORT_COMMAND_CAPABILITY_RECONNECT_ENDPOINT, false);
+            capabilities.emplace(MIDI_CONFIG_JSON_TRANSPORT_COMMAND_CAPABILITY_MUTE_ENDPOINT, true);
+            internal::SetConfigurationResponseObjectSuccess(responseObject);
+            internal::SetConfigurationCommandResponseQueryCapabilities(responseObject, capabilities);
+            return S_OK;
+        }
+
+        if (command.Command() == GetMuteMaskCommand)
+        {
+            SetMuteMaskResponse(responseObject, networkEngine->MuteMask());
+            return S_OK;
+        }
+
+        if (command.Command() == MIDI_CONFIG_JSON_TRANSPORT_COMMAND_MUTE_ENDPOINT ||
+            command.Command() == MIDI_CONFIG_JSON_TRANSPORT_COMMAND_UNMUTE_ENDPOINT)
+        {
+            const auto associationArgument = command.Arguments()->find(
+                MIDI_CONFIG_JSON_TRANSPORT_COMMAND_COMMON_PARAMETER_ENDPOINT_ASSOCIATION_ID);
+            if (associationArgument == command.Arguments()->end())
+            {
+                internal::SetConfigurationResponseObjectFail(responseObject, L"The associationId argument is required.");
+                return S_OK;
+            }
+
+            const auto associationId = internal::StringToGuid(associationArgument->second);
+            return ChangePortMutedState(
+                associationId,
+                command.Command() == MIDI_CONFIG_JSON_TRANSPORT_COMMAND_MUTE_ENDPOINT,
+                responseObject);
+        }
+
         if (command.Command() != SetLoopbackCommand)
         {
             internal::SetConfigurationResponseObjectFail(responseObject, L"Unknown ipMIDI transport command.");
@@ -145,6 +199,92 @@ HRESULT CMidi2IpMidiConfigurationManager::ProcessCommand(
         const auto hr = wil::ResultFromCaughtException();
         internal::SetConfigurationResponseObjectFailWithErrorCode(
             responseObject, static_cast<uint32_t>(hr), L"Unable to process the ipMIDI configuration command.");
+        return S_OK;
+    }
+}
+
+HRESULT CMidi2IpMidiConfigurationManager::ChangePortMutedState(
+    winrt::guid const& associationId,
+    bool muted,
+    json::JsonObject& responseObject) noexcept
+{
+    try
+    {
+        std::scoped_lock configurationLock(m_configurationMutex);
+        auto endpointTable = TransportState::Current().GetEndpointTable();
+        auto endpointManager = TransportState::Current().GetEndpointManager();
+        auto networkEngine = TransportState::Current().GetNetworkEngine();
+        if (endpointTable == nullptr || endpointManager == nullptr || networkEngine == nullptr)
+        {
+            internal::SetConfigurationResponseObjectFail(responseObject, L"The ipMIDI transport is not running.");
+            return S_OK;
+        }
+
+        auto device = endpointTable->GetDevice(associationId);
+        if (device == nullptr || device->Definition == nullptr ||
+            device->Definition->PortIndex >= networkEngine->PortCount())
+        {
+            internal::SetConfigurationResponseObjectFail(responseObject, L"The ipMIDI endpoint was not found.");
+            return S_OK;
+        }
+
+        auto definition = device->Definition;
+        const auto portIndex = definition->PortIndex;
+        const bool previousMuted = networkEngine->IsPortMuted(portIndex);
+        if (previousMuted == muted)
+        {
+            SetMuteResponse(responseObject, muted, networkEngine->MuteMask());
+            return S_OK;
+        }
+
+        const auto networkResult = networkEngine->SetPortMuted(portIndex, muted);
+        if (FAILED(networkResult))
+        {
+            internal::SetConfigurationResponseObjectFailWithErrorCode(
+                responseObject, static_cast<uint32_t>(networkResult), L"Unable to change the ipMIDI network state.");
+            return S_OK;
+        }
+
+        definition->IsMuted = muted;
+        const auto propertyResult = endpointManager->UpdateEndpointMutedStateProperty(definition);
+        if (FAILED(propertyResult))
+        {
+            definition->IsMuted = previousMuted;
+            LOG_IF_FAILED(networkEngine->SetPortMuted(portIndex, previousMuted));
+            LOG_IF_FAILED(endpointManager->UpdateEndpointMutedStateProperty(definition));
+            internal::SetConfigurationResponseObjectFailWithErrorCode(
+                responseObject, static_cast<uint32_t>(propertyResult), L"Unable to update the MIDI endpoint mute state.");
+            return S_OK;
+        }
+
+        const auto newMask = networkEngine->MuteMask();
+        const auto registryResult = IpMidiRegistrySettings::WriteMuteMask(newMask);
+        if (FAILED(registryResult))
+        {
+            const auto rollbackResult = networkEngine->SetPortMuted(portIndex, previousMuted);
+            definition->IsMuted = previousMuted;
+            const auto propertyRollbackResult = endpointManager->UpdateEndpointMutedStateProperty(definition);
+            LOG_IF_FAILED(rollbackResult);
+            LOG_IF_FAILED(propertyRollbackResult);
+            internal::SetConfigurationResponseObjectFailWithErrorCode(
+                responseObject, static_cast<uint32_t>(registryResult), L"Unable to save the ipMIDI mute state.");
+            return S_OK;
+        }
+
+        TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_INFO,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"ipMIDI mute configuration applied", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingUInt8(static_cast<uint8_t>(portIndex + 1), "port number"),
+            TraceLoggingBool(muted, "muted"),
+            TraceLoggingUInt32(newMask, "mute mask"));
+        SetMuteResponse(responseObject, muted, newMask);
+        return S_OK;
+    }
+    catch (...)
+    {
+        const auto hr = wil::ResultFromCaughtException();
+        internal::SetConfigurationResponseObjectFailWithErrorCode(
+            responseObject, static_cast<uint32_t>(hr), L"Unable to change the ipMIDI mute state.");
         return S_OK;
     }
 }

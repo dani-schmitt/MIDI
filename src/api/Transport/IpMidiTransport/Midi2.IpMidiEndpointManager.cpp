@@ -44,6 +44,17 @@ namespace
                 TraceLoggingHResult(hr, MIDI_TRACE_EVENT_HRESULT_FIELD));
         }
     }
+
+    void LogMuteMaskWriteFailure(HRESULT hr)
+    {
+        if (FAILED(hr))
+        {
+            TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
+                TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+                TraceLoggingWideString(L"Unable to update ipMIDI MuteMask registry value", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+                TraceLoggingHResult(hr, MIDI_TRACE_EVENT_HRESULT_FIELD));
+        }
+    }
 }
 
 GUID TransportLayerGUID = TRANSPORT_LAYER_GUID;
@@ -83,10 +94,12 @@ CMidi2IpMidiEndpointManager::Initialize(
 
     m_initialized = true;
     const auto wantedPorts = IpMidiRegistrySettings::ReadWantedPorts();
+    const auto requestedMuteMask = IpMidiRegistrySettings::ReadMuteMask();
 
     for (uint8_t portIndex = 0; portIndex < wantedPorts; ++portIndex)
     {
-        const auto prepareResult = networkEngine->PreparePort(portIndex);
+        const bool muted = (requestedMuteMask & (1u << portIndex)) != 0;
+        const auto prepareResult = networkEngine->PreparePort(portIndex, muted);
         if (FAILED(prepareResult))
         {
             TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
@@ -105,6 +118,7 @@ CMidi2IpMidiEndpointManager::Initialize(
         definition->EndpointDescription = L"ipMIDI Ethernet endpoint.";
         definition->EndpointUniqueIdentifier = MakeEndpointUniqueId(portIndex);
         definition->InstanceIdPrefix = MIDI_IP_MIDI_INSTANCE_ID_PREFIX;
+        definition->IsMuted = muted;
 
         const auto createEndpointResult = CreateEndpoint(definition);
         if (FAILED(createEndpointResult))
@@ -138,6 +152,9 @@ CMidi2IpMidiEndpointManager::Initialize(
 
     LogActualPortsWriteFailure(IpMidiRegistrySettings::WriteActualPorts(
         static_cast<uint8_t>(m_createdEndpoints.size())));
+    const auto activePortCount = static_cast<uint8_t>(m_createdEndpoints.size());
+    const uint32_t activePortMask = activePortCount == 0 ? 0 : ((1u << activePortCount) - 1u);
+    LogMuteMaskWriteFailure(IpMidiRegistrySettings::WriteMuteMask(requestedMuteMask & activePortMask));
 
     return S_OK;
 }

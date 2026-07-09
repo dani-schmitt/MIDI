@@ -6,7 +6,7 @@
     <Package
           Name="Microsoft Windows MIDI Services ipMIDI $(var.Platform)"
           Manufacturer="Microsoft Corporation"
-          Version="1.0.16.0"
+          Version="1.0.18.0"
           UpgradeCode="eab8a399-74da-4542-a69b-1d8be52a83b8"
           Scope="perMachine"
           Compressed="true"
