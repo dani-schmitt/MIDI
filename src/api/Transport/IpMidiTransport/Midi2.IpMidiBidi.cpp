@@ -56,6 +56,10 @@ CMidi2IpMidiBidi::Initialize(
 
         m_networkEngine = TransportState::Current().GetNetworkEngine();
         RETURN_HR_IF_NULL(E_UNEXPECTED, m_networkEngine);
+        // This is the first operation that represents a client opening a UMP or
+        // legacy WinMM port. Service startup and configuration queries do not start
+        // the Trial evaluation period.
+        m_networkEngine->NotifyPortOpened();
         RETURN_IF_FAILED(m_networkEngine->RegisterCallback(m_portIndex, static_cast<IMidiCallback*>(this), &m_callbackRegistrationId));
 
     }

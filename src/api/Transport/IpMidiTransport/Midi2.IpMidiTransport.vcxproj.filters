@@ -48,6 +48,9 @@
     <ClCompile Include="IpMidiRegistrySettings.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="IpMidiTrialState.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Midl Include="Midi2IpMidiTransport.idl">
@@ -81,6 +84,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="IpMidiRegistrySettings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IpMidiTrialState.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="TransportWorkQueue.h">

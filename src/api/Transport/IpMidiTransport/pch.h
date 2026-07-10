@@ -61,6 +61,7 @@
 #include <queue>
 #include <memory>
 #include <functional>
+#include <algorithm>
 
 #include <mmsystem.h>
 #include "SWDevice.h"
@@ -120,6 +121,7 @@ class IpMidiNetworkEngine;
 #include "Midi2.IpMidiBidi.h"
 #include "Midi2.IpMidiEndpointManager.h"
 #include "Midi2.IpMidiConfigurationManager.h"
+#include "IpMidiTrialState.h"
 #include "IpMidiNetworkEngine.h"
 #include "IpMidiRegistrySettings.h"
 #include "TransportWorkQueue.h"

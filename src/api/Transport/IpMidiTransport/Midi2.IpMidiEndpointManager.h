@@ -33,8 +33,11 @@ public:
     );
 
     HRESULT UpdateEndpointMutedStateProperty(
-        _In_ std::shared_ptr<MidiIpMidiDeviceDefinition>
+        _In_ std::shared_ptr<MidiIpMidiDeviceDefinition>,
+        _In_ bool muted
     );
+
+    HRESULT ApplyTrialMuteToAllEndpoints();
 
     bool IsInitialized() { return m_initialized; }
 
@@ -62,5 +65,6 @@ private:
     wil::com_ptr_nothrow<IMidiDeviceManager> m_MidiDeviceManager;
     wil::com_ptr_nothrow<IMidiEndpointProtocolManager> m_MidiProtocolManager;
     std::vector<std::shared_ptr<MidiIpMidiDeviceDefinition>> m_createdEndpoints;
+    std::mutex m_endpointPropertyMutex;
 
 };

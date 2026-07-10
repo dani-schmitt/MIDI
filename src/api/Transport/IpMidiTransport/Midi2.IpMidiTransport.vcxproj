@@ -40,6 +40,7 @@
     <Keyword>Win32Proj</Keyword>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <ProjectName>Midi2.IpMidiTransport</ProjectName>
+    <IpMidiEdition Condition="'$(IpMidiEdition)'==''">Retail</IpMidiEdition>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -135,7 +136,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <Link>
-      <AdditionalDependencies>ws2_32.lib;iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ws2_32.lib;iphlpapi.lib;crypt32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
@@ -178,6 +179,10 @@
     <IntDir>$(SolutionDir)VSFiles\intermediate\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
     <LibraryPath>$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86);$(WindowsSdkDir)\Testing\Development\lib\$(Platform);$(SolutionDir)VSFiles\intermediate\TransportUtilities\$(Platform)\$(Configuration);$(SolutionDir)\VSFiles\intermediate\midikscommon\$(Platform)\$(Configuration);$(SolutionDir)\VSFiles\intermediate\midiksenum\$(Platform)\$(Configuration);$(SolutionDir)\VSFiles\intermediate\midiks\$(Platform)\$(Configuration);$(SolutionDir)VSFiles\intermediate\TransportUtilities\$(Platform)\$(Configuration)\;$(SolutionDir)VSFiles\intermediate\TransportUtilities\$(Platform)\$(Configuration)\</LibraryPath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(IpMidiEdition)'=='Trial'">
+    <OutDir>$(SolutionDir)VSFiles\$(Platform)\$(Configuration)_Trial\</OutDir>
+    <IntDir>$(SolutionDir)VSFiles\intermediate\$(ProjectName)\$(Platform)\$(Configuration)_Trial\</IntDir>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
@@ -384,12 +389,24 @@
       <AdditionalIncludeDirectories>$(SolutionDir)\idl;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(SolutionDir)VSFiles\intermediate\$(ProjectName)\$(Platform)\$(Configuration)\</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(IpMidiEdition)'=='Trial'">
+    <ClCompile>
+      <PreprocessorDefinitions>IPMIDI_TRIAL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>IPMIDI_TRIAL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+    <Midl>
+      <OutputDirectory>$(SolutionDir)VSFiles\intermediate\$(ProjectName)\$(Platform)\$(Configuration)_Trial\</OutputDirectory>
     </Midl>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="MidiIpMidiDeviceTable.cpp" />
     <ClCompile Include="IpMidiNetworkEngine.cpp" />
     <ClCompile Include="IpMidiRegistrySettings.cpp" />
+    <ClCompile Include="IpMidiTrialState.cpp" />
     <ClCompile Include="TransportState.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="Midi2.IpMidiTransport.cpp" />
@@ -412,6 +429,7 @@
     <ClInclude Include="TransportState.h" />
     <ClInclude Include="IpMidiNetworkEngine.h" />
     <ClInclude Include="IpMidiRegistrySettings.h" />
+    <ClInclude Include="IpMidiTrialState.h" />
     <ClInclude Include="TransportWorkQueue.h" />
     <ClInclude Include="ip_midi_transport_defs.h" />
     <ClInclude Include="dllmain.h" />
@@ -439,5 +457,9 @@
       <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
     </PropertyGroup>
     <Error Condition="!Exists('..\..\packages\Microsoft.Windows.ImplementationLibrary.1.0.250325.1\build\native\Microsoft.Windows.ImplementationLibrary.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\..\packages\Microsoft.Windows.ImplementationLibrary.1.0.250325.1\build\native\Microsoft.Windows.ImplementationLibrary.targets'))" />
+  </Target>
+  <Target Name="ValidateIpMidiEdition" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(IpMidiEdition)' != 'Retail' and '$(IpMidiEdition)' != 'Trial'"
+           Text="IpMidiEdition must be either Retail or Trial." />
   </Target>
 </Project>

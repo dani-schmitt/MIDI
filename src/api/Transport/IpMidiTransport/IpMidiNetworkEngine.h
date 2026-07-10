@@ -33,6 +33,8 @@ struct IpMidiPacket
 class IpMidiNetworkEngine
 {
 public:
+    using TrialMuteAppliedCallback = std::function<HRESULT()>;
+
     HRESULT Initialize(_In_ bool loopbackEnabled);
     HRESULT PreparePort(_In_ uint8_t portIndex, _In_ bool muted);
     void RemoveLastPreparedPort();
@@ -48,12 +50,19 @@ public:
         _In_ LONGLONG timestamp);
     HRESULT RegisterCallback(_In_ uint8_t portIndex, _In_ IMidiCallback* callback, _Out_ uint64_t* registrationId);
     void UnregisterCallback(_In_ uint8_t portIndex, _In_ uint64_t registrationId);
+    void NotifyPortOpened() noexcept;
+    IpMidiTrialStatus GetTrialStatus() noexcept;
+    bool TrialMuteLocked() noexcept;
+    void SetTrialMuteAppliedCallback(_In_ TrialMuteAppliedCallback callback);
 
     HRESULT SetLoopbackEnabled(_In_ bool enabled);
     bool LoopbackEnabled() const noexcept { return m_loopbackEnabled.load(); }
     HRESULT SetPortMuted(_In_ uint8_t portIndex, _In_ bool muted);
-    bool IsPortMuted(_In_ uint8_t portIndex) const noexcept;
-    uint32_t MuteMask() const noexcept;
+    void RestorePortConfiguredMuteState(_In_ uint8_t portIndex, _In_ bool muted) noexcept;
+    bool IsPortConfiguredMuted(_In_ uint8_t portIndex) const noexcept;
+    bool IsPortEffectivelyMuted(_In_ uint8_t portIndex) const noexcept;
+    uint32_t ConfiguredMuteMask() const noexcept;
+    uint32_t EffectiveMuteMask() const noexcept;
 
 private:
     struct CallbackRegistration
@@ -93,6 +102,7 @@ private:
         umpToBytestream UmpToByteStream;
         bytestreamToUMP ByteStreamToUmp;
 
+        std::atomic<bool> ConfiguredMuted{};
         std::atomic<bool> Muted{};
 
         std::atomic<uint64_t> OutgoingDropCount{};
@@ -120,6 +130,10 @@ private:
     void ReceiverWorker(_In_ std::stop_token stopToken);
     void DispatcherWorker(_In_ std::stop_token stopToken);
     void DispatchIncomingPacket(_In_ PortContext& port, _In_ IpMidiPacket const& packet);
+    bool RefreshTrialEnforcement() noexcept;
+    void ApplyTrialTrafficBlock() noexcept;
+    void ApplyTrialMuteOnReceiverThread() noexcept;
+    void NotifyTrialMuteApplied() noexcept;
 
     PortContext* GetPort(_In_ uint8_t portIndex) const noexcept;
 
@@ -131,6 +145,7 @@ private:
     mutable std::mutex m_incomingMutex;
     std::condition_variable m_outgoingWakeup;
     std::condition_variable m_incomingWakeup;
+    std::mutex m_trialCallbackMutex;
 
     std::array<std::unique_ptr<PortContext>, IP_MIDI_MAX_PORT_COUNT> m_ports{};
     uint8_t m_portCount{};
@@ -150,9 +165,13 @@ private:
     HRESULT m_reconfigureResult{ S_OK };
     bool m_winsockStarted{};
     bool m_initialized{};
-    bool m_started{};
+    std::atomic<bool> m_started{};
     std::atomic<bool> m_stopping{ true };
     std::atomic<bool> m_loopbackEnabled{};
+    std::atomic<bool> m_trialTrafficBlocked{};
+    std::atomic<bool> m_trialMutePending{};
+    TrialMuteAppliedCallback m_trialMuteAppliedCallback;
+    IpMidiTrialState m_trialState;
 
     std::jthread m_senderThread;
     std::jthread m_receiverThread;

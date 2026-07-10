@@ -29,5 +29,6 @@ struct MidiIpMidiDeviceDefinition
     std::wstring CreatedEndpointInterfaceId{};
 
 
+    bool ConfiguredMuted{ false };
     bool IsMuted{ false };
 };

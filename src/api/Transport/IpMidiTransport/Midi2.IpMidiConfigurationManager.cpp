@@ -8,9 +8,27 @@ namespace
     constexpr wchar_t GetLoopbackCommand[] = L"getLoopback";
     constexpr wchar_t SetLoopbackCommand[] = L"setLoopback";
     constexpr wchar_t GetMuteMaskCommand[] = L"getMuteMask";
+    constexpr wchar_t GetTrialStatusCommand[] = L"getTrialStatus";
     constexpr wchar_t EnabledArgument[] = L"enabled";
     constexpr wchar_t MutedProperty[] = L"muted";
     constexpr wchar_t MuteMaskProperty[] = L"muteMask";
+    constexpr wchar_t IsTrialProperty[] = L"isTrial";
+    constexpr wchar_t StateProperty[] = L"state";
+    constexpr wchar_t RemainingSecondsProperty[] = L"remainingSeconds";
+    constexpr wchar_t RebootRequiredProperty[] = L"rebootRequired";
+
+    wchar_t const* TrialStateName(IpMidiTrialStateKind state) noexcept
+    {
+        switch (state)
+        {
+        case IpMidiTrialStateKind::Retail: return L"retail";
+        case IpMidiTrialStateKind::NotStarted: return L"notStarted";
+        case IpMidiTrialStateKind::Active: return L"active";
+        case IpMidiTrialStateKind::Expired: return L"expired";
+        case IpMidiTrialStateKind::Faulted: return L"faulted";
+        default: return L"faulted";
+        }
+    }
 
     void SetLoopbackResponse(json::JsonObject& responseObject, bool enabled)
     {
@@ -29,6 +47,17 @@ namespace
     {
         internal::SetConfigurationResponseObjectSuccess(responseObject);
         responseObject.SetNamedValue(MuteMaskProperty, json::JsonValue::CreateNumberValue(muteMask));
+    }
+
+    void SetTrialStatusResponse(json::JsonObject& responseObject, IpMidiTrialStatus const& status)
+    {
+        internal::SetConfigurationResponseObjectSuccess(responseObject);
+        responseObject.SetNamedValue(IsTrialProperty, json::JsonValue::CreateBooleanValue(status.IsTrial));
+        responseObject.SetNamedValue(StateProperty, json::JsonValue::CreateStringValue(TrialStateName(status.State)));
+        responseObject.SetNamedValue(RemainingSecondsProperty,
+            json::JsonValue::CreateNumberValue(status.RemainingSeconds));
+        responseObject.SetNamedValue(RebootRequiredProperty,
+            json::JsonValue::CreateBooleanValue(status.RebootRequired));
     }
 }
 
@@ -126,9 +155,15 @@ HRESULT CMidi2IpMidiConfigurationManager::ProcessCommand(
             return S_OK;
         }
 
+        if (command.Command() == GetTrialStatusCommand)
+        {
+            SetTrialStatusResponse(responseObject, networkEngine->GetTrialStatus());
+            return S_OK;
+        }
+
         if (command.Command() == GetMuteMaskCommand)
         {
-            SetMuteMaskResponse(responseObject, networkEngine->MuteMask());
+            SetMuteMaskResponse(responseObject, networkEngine->EffectiveMuteMask());
             return S_OK;
         }
 
@@ -230,10 +265,19 @@ HRESULT CMidi2IpMidiConfigurationManager::ChangePortMutedState(
 
         auto definition = device->Definition;
         const auto portIndex = definition->PortIndex;
-        const bool previousMuted = networkEngine->IsPortMuted(portIndex);
+        if (networkEngine->TrialMuteLocked())
+        {
+            internal::SetConfigurationResponseObjectFail(
+                responseObject,
+                L"Trial time has expired. Please reboot your Computer to test ipMIDI again.");
+            return S_OK;
+        }
+
+        const bool previousMuted = networkEngine->IsPortConfiguredMuted(portIndex);
+        const auto previousMask = networkEngine->ConfiguredMuteMask();
         if (previousMuted == muted)
         {
-            SetMuteResponse(responseObject, muted, networkEngine->MuteMask());
+            SetMuteResponse(responseObject, muted, networkEngine->EffectiveMuteMask());
             return S_OK;
         }
 
@@ -245,29 +289,72 @@ HRESULT CMidi2IpMidiConfigurationManager::ChangePortMutedState(
             return S_OK;
         }
 
-        definition->IsMuted = muted;
-        const auto propertyResult = endpointManager->UpdateEndpointMutedStateProperty(definition);
+        if (networkEngine->TrialMuteLocked())
+        {
+            networkEngine->RestorePortConfiguredMuteState(portIndex, previousMuted);
+            internal::SetConfigurationResponseObjectFail(
+                responseObject,
+                L"Trial time has expired. Please reboot your Computer to test ipMIDI again.");
+            return S_OK;
+        }
+
+        definition->ConfiguredMuted = muted;
+        const auto propertyResult = endpointManager->UpdateEndpointMutedStateProperty(definition, muted);
         if (FAILED(propertyResult))
         {
-            definition->IsMuted = previousMuted;
-            LOG_IF_FAILED(networkEngine->SetPortMuted(portIndex, previousMuted));
-            LOG_IF_FAILED(endpointManager->UpdateEndpointMutedStateProperty(definition));
+            definition->ConfiguredMuted = previousMuted;
+            const auto rollbackResult = networkEngine->SetPortMuted(portIndex, previousMuted);
+            if (FAILED(rollbackResult) && networkEngine->TrialMuteLocked())
+            {
+                networkEngine->RestorePortConfiguredMuteState(portIndex, previousMuted);
+            }
+            LOG_IF_FAILED(rollbackResult);
+            LOG_IF_FAILED(endpointManager->UpdateEndpointMutedStateProperty(
+                definition, networkEngine->TrialMuteLocked() ? true : previousMuted));
             internal::SetConfigurationResponseObjectFailWithErrorCode(
                 responseObject, static_cast<uint32_t>(propertyResult), L"Unable to update the MIDI endpoint mute state.");
             return S_OK;
         }
 
-        const auto newMask = networkEngine->MuteMask();
+        if (networkEngine->TrialMuteLocked())
+        {
+            networkEngine->RestorePortConfiguredMuteState(portIndex, previousMuted);
+            definition->ConfiguredMuted = previousMuted;
+            LOG_IF_FAILED(endpointManager->UpdateEndpointMutedStateProperty(definition, true));
+            internal::SetConfigurationResponseObjectFail(
+                responseObject,
+                L"Trial time has expired. Please reboot your Computer to test ipMIDI again.");
+            return S_OK;
+        }
+
+        const auto newMask = networkEngine->ConfiguredMuteMask();
         const auto registryResult = IpMidiRegistrySettings::WriteMuteMask(newMask);
         if (FAILED(registryResult))
         {
             const auto rollbackResult = networkEngine->SetPortMuted(portIndex, previousMuted);
-            definition->IsMuted = previousMuted;
-            const auto propertyRollbackResult = endpointManager->UpdateEndpointMutedStateProperty(definition);
+            if (FAILED(rollbackResult) && networkEngine->TrialMuteLocked())
+            {
+                networkEngine->RestorePortConfiguredMuteState(portIndex, previousMuted);
+            }
+            definition->ConfiguredMuted = previousMuted;
+            const auto propertyRollbackResult = endpointManager->UpdateEndpointMutedStateProperty(
+                definition, networkEngine->TrialMuteLocked() ? true : previousMuted);
             LOG_IF_FAILED(rollbackResult);
             LOG_IF_FAILED(propertyRollbackResult);
             internal::SetConfigurationResponseObjectFailWithErrorCode(
                 responseObject, static_cast<uint32_t>(registryResult), L"Unable to save the ipMIDI mute state.");
+            return S_OK;
+        }
+
+        if (networkEngine->TrialMuteLocked())
+        {
+            networkEngine->RestorePortConfiguredMuteState(portIndex, previousMuted);
+            definition->ConfiguredMuted = previousMuted;
+            LOG_IF_FAILED(IpMidiRegistrySettings::WriteMuteMask(previousMask));
+            LOG_IF_FAILED(endpointManager->UpdateEndpointMutedStateProperty(definition, true));
+            internal::SetConfigurationResponseObjectFail(
+                responseObject,
+                L"Trial time has expired. Please reboot your Computer to test ipMIDI again.");
             return S_OK;
         }
 
@@ -277,7 +364,7 @@ HRESULT CMidi2IpMidiConfigurationManager::ChangePortMutedState(
             TraceLoggingUInt8(static_cast<uint8_t>(portIndex + 1), "port number"),
             TraceLoggingBool(muted, "muted"),
             TraceLoggingUInt32(newMask, "mute mask"));
-        SetMuteResponse(responseObject, muted, newMask);
+        SetMuteResponse(responseObject, muted, networkEngine->EffectiveMuteMask());
         return S_OK;
     }
     catch (...)

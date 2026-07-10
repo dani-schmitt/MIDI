@@ -91,6 +91,8 @@ CMidi2IpMidiEndpointManager::Initialize(
 
     auto networkEngine = TransportState::Current().GetNetworkEngine();
     RETURN_HR_IF_NULL(E_UNEXPECTED, networkEngine);
+    networkEngine->SetTrialMuteAppliedCallback([this]() noexcept
+        { return ApplyTrialMuteToAllEndpoints(); });
 
     m_initialized = true;
     const auto wantedPorts = IpMidiRegistrySettings::ReadWantedPorts();
@@ -118,7 +120,8 @@ CMidi2IpMidiEndpointManager::Initialize(
         definition->EndpointDescription = L"ipMIDI Ethernet endpoint.";
         definition->EndpointUniqueIdentifier = MakeEndpointUniqueId(portIndex);
         definition->InstanceIdPrefix = MIDI_IP_MIDI_INSTANCE_ID_PREFIX;
-        definition->IsMuted = muted;
+        definition->ConfiguredMuted = muted;
+        definition->IsMuted = networkEngine->IsPortEffectivelyMuted(portIndex);
 
         const auto createEndpointResult = CreateEndpoint(definition);
         if (FAILED(createEndpointResult))
@@ -260,9 +263,12 @@ CMidi2IpMidiEndpointManager::CreateParentDevice()
 _Use_decl_annotations_
 HRESULT
 CMidi2IpMidiEndpointManager::UpdateEndpointMutedStateProperty(
-    _In_ std::shared_ptr<MidiIpMidiDeviceDefinition> definition)
+    _In_ std::shared_ptr<MidiIpMidiDeviceDefinition> definition,
+    _In_ bool muted)
 {
     RETURN_HR_IF_NULL(E_INVALIDARG, definition);
+    std::scoped_lock propertyLock(m_endpointPropertyMutex);
+    definition->IsMuted = muted;
 
     TraceLoggingWrite(
         MidiIpMidiTransportTelemetryProvider::Provider(),
@@ -310,6 +316,40 @@ CMidi2IpMidiEndpointManager::UpdateEndpointMutedStateProperty(
     );
 
     return S_OK;
+}
+
+HRESULT CMidi2IpMidiEndpointManager::ApplyTrialMuteToAllEndpoints()
+{
+    HRESULT firstFailure = S_OK;
+    for (auto const& definition : m_createdEndpoints)
+    {
+        const auto result = UpdateEndpointMutedStateProperty(definition, true);
+        if (FAILED(result) && SUCCEEDED(firstFailure))
+        {
+            firstFailure = result;
+        }
+    }
+
+    if (FAILED(firstFailure))
+    {
+        TraceLoggingWrite(
+            MidiIpMidiTransportTelemetryProvider::Provider(),
+            MIDI_TRACE_EVENT_ERROR,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"Unable to publish every forced ipMIDI Trial mute property", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingUInt32(static_cast<uint32_t>(m_createdEndpoints.size()), "endpoint count"),
+            TraceLoggingHResult(firstFailure, MIDI_TRACE_EVENT_HRESULT_FIELD));
+    }
+    else
+    {
+        TraceLoggingWrite(
+            MidiIpMidiTransportTelemetryProvider::Provider(),
+            MIDI_TRACE_EVENT_INFO,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"Published forced ipMIDI Trial mute state", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingUInt32(static_cast<uint32_t>(m_createdEndpoints.size()), "endpoint count"));
+    }
+    return firstFailure;
 }
 
 

@@ -1,13 +1,13 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util='http://wixtoolset.org/schemas/v4/wxs/util'>
 
-    <?define StagingSourceRootFolder=$(env.MIDI_REPO_ROOT)build\staging ?>
+    <?define StagingSourceRootFolder=$(var.IpMidiStagingRoot) ?>
 
     <Package
-          Name="Microsoft Windows MIDI Services ipMIDI $(var.Platform)"
+          Name="$(var.IpMidiPackageName) $(var.Platform)"
           Manufacturer="Microsoft Corporation"
-          Version="1.0.18.0"
-          UpgradeCode="eab8a399-74da-4542-a69b-1d8be52a83b8"
+          Version="$(var.IpMidiMsiVersion)"
+          UpgradeCode="$(var.IpMidiMsiUpgradeCode)"
           Scope="perMachine"
           Compressed="true"
 
@@ -17,6 +17,26 @@
 
         <MajorUpgrade
             DowngradeErrorMessage="A newer version of the Windows MIDI Services ipMIDI package is already installed." />
+
+        <?if $(var.IpMidiEdition) = Trial ?>
+        <Upgrade Id="$(var.IpMidiRetailMsiUpgradeCode)">
+            <UpgradeVersion Minimum="0.0.0"
+                            IncludeMinimum="yes"
+                            OnlyDetect="yes"
+                            Property="IPMIDI_RETAIL_EDITION_FOUND" />
+        </Upgrade>
+        <Launch Condition="Installed OR NOT IPMIDI_RETAIL_EDITION_FOUND"
+                Message="The Retail edition of Windows MIDI Services ipMIDI is already installed. Uninstall it, then use WindowsMidiServicesIpMidiTrialSetup.exe to install the Trial edition." />
+        <?else?>
+        <Property Id="IPMIDI_BURN_CROSS_EDITION" Secure="yes" />
+        <Upgrade Id="$(var.IpMidiTrialMsiUpgradeCode)">
+            <UpgradeVersion Minimum="0.0.0"
+                            IncludeMinimum="yes"
+                            Property="IPMIDI_TRIAL_EDITION_FOUND" />
+        </Upgrade>
+        <Launch Condition="Installed OR NOT IPMIDI_TRIAL_EDITION_FOUND OR IPMIDI_BURN_CROSS_EDITION = 1"
+                Message="The Trial edition of Windows MIDI Services ipMIDI is installed. Use WindowsMidiServicesIpMidiSetup.exe to replace it with the Retail edition." />
+        <?endif?>
 
 
         <StandardDirectory Id="ProgramFiles64Folder">
@@ -31,7 +51,7 @@
         <Component Id="WindowsServicePlugins"
                    Bitness="always64"
                    Directory="SERVICE_INSTALLFOLDER"
-                   Guid="ffcdd890-df27-4d05-a6e2-ab9679bcb688"  >
+                   Guid="$(var.IpMidiServicePluginsComponentGuid)"  >
 
             <File Source="$(StagingSourceRootFolder)\api\$(var.Platform)\Midi2.IpMidiTransport.dll" SelfRegCost="1" Vital="true" />
             <File Source="$(StagingSourceRootFolder)\api\$(var.Platform)\Midi2.IpMidiTransport.pdb" />
@@ -41,7 +61,7 @@
         <Component Id="ConfigurationRegistryEntries"
                 Bitness="always64"
                 Directory="SERVICE_INSTALLFOLDER"
-                Guid="0efafffe-93ba-4f96-9d20-21d66cf8025f"
+                Guid="$(var.IpMidiConfigurationComponentGuid)"
                 NeverOverwrite="false">
 
             <RegistryKey Root="HKLM"
@@ -74,7 +94,7 @@
       <Component Id="RestartService"
                   Bitness="always64"
                   Directory="SERVICE_INSTALLFOLDER"
-                  Guid="f165f8d3-c093-4bcc-b59a-389babea54f8">
+                  Guid="$(var.IpMidiRestartServiceComponentGuid)">
 
         <ServiceControl Id="midisrv" Name="midisrv"
                         Start="both"

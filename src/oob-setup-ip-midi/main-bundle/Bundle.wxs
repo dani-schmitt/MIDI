@@ -14,10 +14,24 @@
     <!-- TODO: Gate on Windows 10 22H2 or later -->
 
     <!--<Bundle Name="Microsoft Windows MIDI Services (Developer Preview 2)" -->
-    <Bundle Name="Windows MIDI Services ipMIDI Preview"
+    <Bundle Name="$(var.IpMidiBundleName)"
             Manufacturer="Microsoft Corporation"
-            Version="1.0.0-preview.1.27"
-            UpgradeCode="410c75f8-4aa0-4e65-86d1-ed76df1e7dff">
+            Version="$(var.IpMidiBundleVersion)"
+            UpgradeCode="$(var.IpMidiBundleUpgradeCode)">
+
+        <?if $(var.IpMidiEdition) = Trial ?>
+        <RelatedBundle Id="$(var.IpMidiRetailBundleUpgradeCode)" Action="detect" />
+        <Variable Name="IpMidiRetailProductState" Type="numeric" Value="2" />
+        <util:ProductSearch
+            Id="IpMidiRetailProductSearch"
+            UpgradeCode="$(var.IpMidiRetailMsiUpgradeCode)"
+            Variable="IpMidiRetailProductState"
+            Result="state" />
+        <bal:Condition Message="The Retail edition of Windows MIDI Services ipMIDI is already installed. Uninstall it before installing the Trial edition."
+                       Condition="WixBundleInstalled OR NOT (IpMidiRetailProductState = 5)" />
+        <?else?>
+        <RelatedBundle Id="$(var.IpMidiTrialBundleUpgradeCode)" Action="upgrade" />
+        <?endif?>
 
         <!-- Require Dev Mode to be turned on to run this installer -->
         <WixVariable Id="DevModeEnabled" Value="0" />
@@ -70,11 +84,14 @@
 
       <PackageGroup Id="MidiServicesPackages">
             <MsiPackage
-                Id="WindowsMIDIServicesIpMidiSetup"
+                Id="$(var.IpMidiMsiOutputName)"
                 Vital="true"
                 Permanent="no"
                 Compressed="yes"
-                SourceFile="WindowsMIDIServicesIpMidiSetup.msi">
+                SourceFile="$(var.IpMidiMsiOutputName).msi">
+                <?if $(var.IpMidiEdition) = Retail ?>
+                <MsiProperty Name="IPMIDI_BURN_CROSS_EDITION" Value="1" />
+                <?endif?>
             </MsiPackage>
 
         </PackageGroup>

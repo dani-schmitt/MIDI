@@ -1,6 +1,33 @@
 <Project Sdk="WixToolset.Sdk/4.0.2">
   <PropertyGroup>
-    <OutputName>WindowsMIDIServicesIpMidiSetup</OutputName>
+    <IpMidiEdition Condition="'$(IpMidiEdition)' == ''">Retail</IpMidiEdition>
+    <IpMidiMsiVersion>1.0.19.0</IpMidiMsiVersion>
+    <IpMidiRetailMsiUpgradeCode>eab8a399-74da-4542-a69b-1d8be52a83b8</IpMidiRetailMsiUpgradeCode>
+    <IpMidiTrialMsiUpgradeCode>f8495e78-7768-4e5a-b997-98f5c13102ab</IpMidiTrialMsiUpgradeCode>
+
+    <OutputName Condition="'$(IpMidiEdition)' == 'Retail'">WindowsMIDIServicesIpMidiSetup</OutputName>
+    <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">WindowsMIDIServicesIpMidiTrialSetup</OutputName>
+
+    <IpMidiPackageName Condition="'$(IpMidiEdition)' == 'Retail'">Microsoft Windows MIDI Services ipMIDI</IpMidiPackageName>
+    <IpMidiPackageName Condition="'$(IpMidiEdition)' == 'Trial'">Microsoft Windows MIDI Services ipMIDI Trial</IpMidiPackageName>
+    <IpMidiMsiUpgradeCode Condition="'$(IpMidiEdition)' == 'Retail'">$(IpMidiRetailMsiUpgradeCode)</IpMidiMsiUpgradeCode>
+    <IpMidiMsiUpgradeCode Condition="'$(IpMidiEdition)' == 'Trial'">$(IpMidiTrialMsiUpgradeCode)</IpMidiMsiUpgradeCode>
+
+    <IpMidiServicePluginsComponentGuid Condition="'$(IpMidiEdition)' == 'Retail'">ffcdd890-df27-4d05-a6e2-ab9679bcb688</IpMidiServicePluginsComponentGuid>
+    <IpMidiServicePluginsComponentGuid Condition="'$(IpMidiEdition)' == 'Trial'">c22d4353-7513-4bdd-9a0b-82a3374fae64</IpMidiServicePluginsComponentGuid>
+    <IpMidiConfigurationComponentGuid Condition="'$(IpMidiEdition)' == 'Retail'">0efafffe-93ba-4f96-9d20-21d66cf8025f</IpMidiConfigurationComponentGuid>
+    <IpMidiConfigurationComponentGuid Condition="'$(IpMidiEdition)' == 'Trial'">bfc4e3b2-d458-465a-822b-eea8e317f7fa</IpMidiConfigurationComponentGuid>
+    <IpMidiRestartServiceComponentGuid Condition="'$(IpMidiEdition)' == 'Retail'">f165f8d3-c093-4bcc-b59a-389babea54f8</IpMidiRestartServiceComponentGuid>
+    <IpMidiRestartServiceComponentGuid Condition="'$(IpMidiEdition)' == 'Trial'">f14dfd4a-917b-417c-acf4-d0e5a64734b2</IpMidiRestartServiceComponentGuid>
+
+    <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Retail'">$(MIDI_REPO_ROOT)build\staging</IpMidiStagingRoot>
+    <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Trial'">$(MIDI_REPO_ROOT)build\staging\ipmidi-trial</IpMidiStagingRoot>
+
+    <DefineConstants>$(DefineConstants);IpMidiEdition=$(IpMidiEdition);IpMidiMsiVersion=$(IpMidiMsiVersion);IpMidiPackageName=$(IpMidiPackageName);IpMidiMsiUpgradeCode=$(IpMidiMsiUpgradeCode);IpMidiRetailMsiUpgradeCode=$(IpMidiRetailMsiUpgradeCode);IpMidiTrialMsiUpgradeCode=$(IpMidiTrialMsiUpgradeCode);IpMidiServicePluginsComponentGuid=$(IpMidiServicePluginsComponentGuid);IpMidiConfigurationComponentGuid=$(IpMidiConfigurationComponentGuid);IpMidiRestartServiceComponentGuid=$(IpMidiRestartServiceComponentGuid);IpMidiStagingRoot=$(IpMidiStagingRoot)</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(IpMidiEdition)' == 'Trial'">
+    <OutputPath>bin\$(Platform)\$(Configuration)\Trial\</OutputPath>
+    <IntermediateOutputPath>obj\$(Platform)\$(Configuration)\Trial\</IntermediateOutputPath>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
@@ -16,4 +43,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\oob-setup-shared\custom-actions\customactions.csproj" />
   </ItemGroup>
+  <Target Name="ValidateIpMidiEdition" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(IpMidiEdition)' != 'Retail' and '$(IpMidiEdition)' != 'Trial'"
+           Text="IpMidiEdition must be either Retail or Trial." />
+  </Target>
 </Project>

@@ -13,6 +13,16 @@ HRESULT IpMidiNetworkEngine::Initialize(bool loopbackEnabled)
 
     m_loopbackEnabled = loopbackEnabled;
     RETURN_IF_FAILED(CreateSharedResources());
+    const auto trialInitializeResult = m_trialState.Initialize();
+    if (FAILED(trialInitializeResult))
+    {
+        TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"ipMIDI Trial runtime state initialization failed; traffic is disabled",
+                MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingHResult(trialInitializeResult, MIDI_TRACE_EVENT_HRESULT_FIELD));
+    }
+    RefreshTrialEnforcement();
     m_initialized = true;
     m_stopping = true;
     return S_OK;
@@ -76,9 +86,12 @@ HRESULT IpMidiNetworkEngine::PreparePort(uint8_t portIndex, bool muted)
 
     try
     {
+        RefreshTrialEnforcement();
         auto port = std::make_unique<PortContext>(portIndex);
-        port->Muted = muted;
-        if (!muted)
+        port->ConfiguredMuted = muted;
+        const bool effectiveMuted = muted || m_trialTrafficBlocked.load();
+        port->Muted = effectiveMuted;
+        if (!effectiveMuted)
         {
             RETURN_IF_FAILED(CreateReceiveResources(*port));
         }
@@ -184,7 +197,21 @@ HRESULT IpMidiNetworkEngine::Start()
     m_stopping = false;
     WSAResetEvent(m_stopEvent);
     WSAResetEvent(m_reconfigureEvent);
+    m_trialMutePending = false;
 
+    RefreshTrialEnforcement();
+    if (m_trialTrafficBlocked)
+    {
+        for (uint8_t index = 0; index < m_portCount; ++index)
+        {
+            auto& port = *m_ports[index];
+            port.Muted = true;
+            CloseReceiveResources(port);
+            ResetPortData(port);
+        }
+    }
+
+    m_started = true;
     if (m_portCount > 0)
     {
         try
@@ -196,6 +223,7 @@ HRESULT IpMidiNetworkEngine::Start()
         catch (...)
         {
             m_stopping = true;
+            m_started = false;
             WSASetEvent(m_stopEvent);
             m_outgoingWakeup.notify_all();
             m_incomingWakeup.notify_all();
@@ -203,7 +231,14 @@ HRESULT IpMidiNetworkEngine::Start()
         }
     }
 
-    m_started = true;
+    if (m_trialMutePending && m_reconfigureEvent != WSA_INVALID_EVENT)
+    {
+        WSASetEvent(m_reconfigureEvent);
+    }
+    else if (m_trialTrafficBlocked)
+    {
+        NotifyTrialMuteApplied();
+    }
     TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_INFO,
         TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
         TraceLoggingWideString(L"ipMIDI shared network workers started", MIDI_TRACE_EVENT_MESSAGE_FIELD),
@@ -257,6 +292,11 @@ void IpMidiNetworkEngine::Shutdown()
         }
     }
 
+    m_trialState.Shutdown();
+    {
+        std::scoped_lock callbackLock(m_trialCallbackMutex);
+        m_trialMuteAppliedCallback = nullptr;
+    }
     CloseSharedResources();
     m_initialized = false;
 }
@@ -322,13 +362,29 @@ HRESULT IpMidiNetworkEngine::SetLoopbackEnabled(bool enabled)
     return S_OK;
 }
 
-bool IpMidiNetworkEngine::IsPortMuted(uint8_t portIndex) const noexcept
+bool IpMidiNetworkEngine::IsPortConfiguredMuted(uint8_t portIndex) const noexcept
+{
+    const auto port = GetPort(portIndex);
+    return port == nullptr || port->ConfiguredMuted.load();
+}
+
+bool IpMidiNetworkEngine::IsPortEffectivelyMuted(uint8_t portIndex) const noexcept
 {
     const auto port = GetPort(portIndex);
     return port == nullptr || port->Muted.load();
 }
 
-uint32_t IpMidiNetworkEngine::MuteMask() const noexcept
+uint32_t IpMidiNetworkEngine::ConfiguredMuteMask() const noexcept
+{
+    uint32_t mask{};
+    for (uint8_t index = 0; index < m_portCount; ++index)
+    {
+        if (m_ports[index]->ConfiguredMuted.load()) mask |= (1u << index);
+    }
+    return mask;
+}
+
+uint32_t IpMidiNetworkEngine::EffectiveMuteMask() const noexcept
 {
     uint32_t mask{};
     for (uint8_t index = 0; index < m_portCount; ++index)
@@ -336,6 +392,121 @@ uint32_t IpMidiNetworkEngine::MuteMask() const noexcept
         if (m_ports[index]->Muted.load()) mask |= (1u << index);
     }
     return mask;
+}
+
+void IpMidiNetworkEngine::SetTrialMuteAppliedCallback(TrialMuteAppliedCallback callback)
+{
+    std::scoped_lock callbackLock(m_trialCallbackMutex);
+    m_trialMuteAppliedCallback = std::move(callback);
+}
+
+void IpMidiNetworkEngine::NotifyPortOpened() noexcept
+{
+    const auto startResult = m_trialState.StartOnFirstPortOpen();
+    if (FAILED(startResult))
+    {
+        TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"Unable to start or restore the ipMIDI Trial evaluation period; traffic is disabled",
+                MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingHResult(startResult, MIDI_TRACE_EVENT_HRESULT_FIELD));
+    }
+
+#ifdef IPMIDI_TRIAL
+    // The receiver may currently be waiting forever because no port had opened yet.
+    // Wake it so it can rebuild the wait with the evaluation deadline as its timeout.
+    if (m_reconfigureEvent != WSA_INVALID_EVENT)
+    {
+        WSASetEvent(m_reconfigureEvent);
+    }
+#endif
+    RefreshTrialEnforcement();
+}
+
+IpMidiTrialStatus IpMidiNetworkEngine::GetTrialStatus() noexcept
+{
+    RefreshTrialEnforcement();
+    return m_trialState.GetStatus();
+}
+
+bool IpMidiNetworkEngine::TrialMuteLocked() noexcept
+{
+    RefreshTrialEnforcement();
+    return m_trialTrafficBlocked.load();
+}
+
+bool IpMidiNetworkEngine::RefreshTrialEnforcement() noexcept
+{
+    if (m_trialState.IsTrafficAllowed())
+    {
+        return true;
+    }
+
+    if (!m_trialTrafficBlocked.exchange(true))
+    {
+        ApplyTrialTrafficBlock();
+    }
+    return false;
+}
+
+void IpMidiNetworkEngine::ApplyTrialTrafficBlock() noexcept
+{
+    for (uint8_t index = 0; index < m_portCount; ++index)
+    {
+        m_ports[index]->Muted = true;
+    }
+
+    m_outgoingWakeup.notify_all();
+    m_incomingWakeup.notify_all();
+    if (m_started.load())
+    {
+        m_trialMutePending = true;
+        if (m_reconfigureEvent != WSA_INVALID_EVENT)
+        {
+            WSASetEvent(m_reconfigureEvent);
+        }
+    }
+    const auto status = m_trialState.GetStatus();
+    TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_WARNING,
+        TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+        TraceLoggingWideString(L"ipMIDI Trial traffic disabled and forced mute requested", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+        TraceLoggingUInt8(static_cast<uint8_t>(status.State), "trial state"));
+}
+
+void IpMidiNetworkEngine::ApplyTrialMuteOnReceiverThread() noexcept
+{
+    for (uint8_t index = 0; index < m_portCount; ++index)
+    {
+        auto& port = *m_ports[index];
+        port.Muted = true;
+        {
+            std::scoped_lock sendLock(port.SendMutex);
+        }
+        {
+            std::scoped_lock dispatchLock(port.CallbackDispatchMutex);
+        }
+        CloseReceiveResources(port);
+        ResetPortData(port);
+    }
+
+    TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_WARNING,
+        TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+        TraceLoggingWideString(L"All active ipMIDI Trial ports are effectively muted", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+        TraceLoggingUInt8(m_portCount, "active port count"));
+    NotifyTrialMuteApplied();
+}
+
+void IpMidiNetworkEngine::NotifyTrialMuteApplied() noexcept
+{
+    TrialMuteAppliedCallback callback;
+    {
+        std::scoped_lock callbackLock(m_trialCallbackMutex);
+        callback = m_trialMuteAppliedCallback;
+    }
+    if (callback)
+    {
+        LOG_IF_FAILED(callback());
+    }
 }
 
 void IpMidiNetworkEngine::ResetPortData(PortContext& port)
@@ -364,10 +535,15 @@ HRESULT IpMidiNetworkEngine::SetPortMuted(uint8_t portIndex, bool muted)
     auto port = GetPort(portIndex);
     RETURN_HR_IF(E_INVALIDARG, port == nullptr);
     RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_SERVICE_NOT_ACTIVE), m_stopping || !m_started);
-    if (port->Muted.load() == muted) return S_OK;
+    RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_ACCESS_DISABLED_BY_POLICY), TrialMuteLocked());
+    if (port->ConfiguredMuted.load() == muted) return S_OK;
 
     std::unique_lock reconfigureLock(m_reconfigureMutex);
     RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BUSY), m_reconfigurePending);
+    RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_ACCESS_DISABLED_BY_POLICY), TrialMuteLocked());
+
+    const bool previousConfiguredMuted = port->ConfiguredMuted.load();
+    port->ConfiguredMuted = muted;
 
     if (muted)
     {
@@ -394,7 +570,8 @@ HRESULT IpMidiNetworkEngine::SetPortMuted(uint8_t portIndex, bool muted)
     if (!WSASetEvent(m_reconfigureEvent))
     {
         m_reconfigurePending = false;
-        if (muted) port->Muted = false;
+        port->ConfiguredMuted = previousConfiguredMuted;
+        port->Muted = m_trialTrafficBlocked.load() || previousConfiguredMuted;
         return HRESULT_FROM_WIN32(WSAGetLastError());
     }
 
@@ -406,9 +583,10 @@ HRESULT IpMidiNetworkEngine::SetPortMuted(uint8_t portIndex, bool muted)
     }
 
     const auto result = m_reconfigureResult;
-    if (FAILED(result) && muted)
+    if (FAILED(result))
     {
-        port->Muted = false;
+        port->ConfiguredMuted = previousConfiguredMuted;
+        port->Muted = m_trialTrafficBlocked.load() || previousConfiguredMuted;
     }
 
     if (SUCCEEDED(result))
@@ -429,6 +607,17 @@ HRESULT IpMidiNetworkEngine::SetPortMuted(uint8_t portIndex, bool muted)
             TraceLoggingHResult(result, MIDI_TRACE_EVENT_HRESULT_FIELD));
     }
     return result;
+}
+
+void IpMidiNetworkEngine::RestorePortConfiguredMuteState(uint8_t portIndex, bool muted) noexcept
+{
+    auto port = GetPort(portIndex);
+    if (port == nullptr) return;
+    port->ConfiguredMuted = muted;
+    if (!m_trialTrafficBlocked.load())
+    {
+        port->Muted = muted;
+    }
 }
 
 void IpMidiNetworkEngine::RefreshLocalIpv4Addresses()
@@ -486,12 +675,19 @@ HRESULT IpMidiNetworkEngine::QueueOutgoingUmp(uint8_t portIndex, PVOID message, 
 
     auto port = GetPort(portIndex);
     RETURN_HR_IF(E_INVALIDARG, port == nullptr);
+    if (!RefreshTrialEnforcement()) return S_OK;
 
     IpMidiPacket packet{};
     packet.Timestamp = timestamp;
     {
-        std::scoped_lock converterLock(port->OutgoingConverterMutex);
+        std::unique_lock converterLock(port->OutgoingConverterMutex);
         if (port->Muted) return S_OK;
+        if (!m_trialState.IsTrafficAllowed())
+        {
+            converterLock.unlock();
+            RefreshTrialEnforcement();
+            return S_OK;
+        }
         const auto words = static_cast<uint32_t const*>(message);
         const auto wordCount = size / sizeof(uint32_t);
         for (UINT offset = 0; offset < wordCount;)
@@ -569,10 +765,16 @@ void IpMidiNetworkEngine::UnregisterCallback(uint8_t portIndex, uint64_t registr
 
 bool IpMidiNetworkEngine::TryEnqueueOutgoing(PortContext& port, IpMidiPacket const& packet)
 {
-    if (port.Muted) return false;
+    if (port.Muted || !RefreshTrialEnforcement()) return false;
     {
-        std::scoped_lock queueLock(m_outgoingMutex);
+        std::unique_lock queueLock(m_outgoingMutex);
         if (port.Muted) return false;
+        if (!m_trialState.IsTrafficAllowed())
+        {
+            queueLock.unlock();
+            RefreshTrialEnforcement();
+            return false;
+        }
         if (port.OutgoingQueue.full())
         {
             ++port.OutgoingDropCount;
@@ -590,10 +792,16 @@ bool IpMidiNetworkEngine::TryEnqueueOutgoing(PortContext& port, IpMidiPacket con
 
 bool IpMidiNetworkEngine::TryEnqueueIncoming(PortContext& port, IpMidiPacket const& packet)
 {
-    if (port.Muted) return false;
+    if (port.Muted || !RefreshTrialEnforcement()) return false;
     {
-        std::scoped_lock queueLock(m_incomingMutex);
+        std::unique_lock queueLock(m_incomingMutex);
         if (port.Muted) return false;
+        if (!m_trialState.IsTrafficAllowed())
+        {
+            queueLock.unlock();
+            RefreshTrialEnforcement();
+            return false;
+        }
         if (port.IncomingQueue.full())
         {
             ++port.IncomingDropCount;
@@ -687,9 +895,16 @@ void IpMidiNetworkEngine::SenderWorker(std::stop_token stopToken)
             if (!TryDequeueOutgoing(portIndex, packet)) continue;
         }
 
+        if (!RefreshTrialEnforcement()) continue;
         auto& port = *m_ports[portIndex];
-        std::scoped_lock sendLock(port.SendMutex);
+        std::unique_lock sendLock(port.SendMutex);
         if (port.Muted) continue;
+        if (!m_trialState.IsTrafficAllowed())
+        {
+            sendLock.unlock();
+            RefreshTrialEnforcement();
+            continue;
+        }
         destination.sin_port = htons(port.UdpPort);
         const auto sent = sendto(m_sendSocket, reinterpret_cast<char const*>(packet.Bytes.data()), packet.Length, 0,
             reinterpret_cast<sockaddr*>(&destination), sizeof(destination));
@@ -706,13 +921,20 @@ void IpMidiNetworkEngine::SenderWorker(std::stop_token stopToken)
 
 void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
 {
+    auto coInitialize = wil::CoInitializeEx(COINIT_MULTITHREADED);
     while (!stopToken.stop_requested() && !m_stopping)
     {
-        std::array<WSAEVENT, IP_MIDI_MAX_PORT_COUNT + 2> events{};
-        std::array<PortContext*, IP_MIDI_MAX_PORT_COUNT + 2> eventPorts{};
+        std::array<WSAEVENT, IP_MIDI_MAX_PORT_COUNT + 3> events{};
+        std::array<PortContext*, IP_MIDI_MAX_PORT_COUNT + 3> eventPorts{};
         DWORD eventCount = 2;
+        DWORD trialEventIndex = MAXDWORD;
         events[0] = m_stopEvent;
         events[1] = m_reconfigureEvent;
+        if (m_trialState.NotificationEvent() != WSA_INVALID_EVENT)
+        {
+            trialEventIndex = eventCount;
+            events[eventCount++] = m_trialState.NotificationEvent();
+        }
         for (uint8_t index = 0; index < m_portCount; ++index)
         {
             auto& port = *m_ports[index];
@@ -724,7 +946,17 @@ void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
             }
         }
 
-        const auto waitResult = WSAWaitForMultipleEvents(eventCount, events.data(), FALSE, WSA_INFINITE, FALSE);
+        DWORD waitTimeout = WSA_INFINITE;
+        if (RefreshTrialEnforcement())
+        {
+            waitTimeout = m_trialState.RemainingWaitMilliseconds();
+        }
+        const auto waitResult = WSAWaitForMultipleEvents(eventCount, events.data(), FALSE, waitTimeout, FALSE);
+        if (waitResult == WSA_WAIT_TIMEOUT)
+        {
+            RefreshTrialEnforcement();
+            continue;
+        }
         if (waitResult == WSA_WAIT_FAILED)
         {
             const auto waitError = HRESULT_FROM_WIN32(WSAGetLastError());
@@ -741,14 +973,40 @@ void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
         }
         const auto eventIndex = waitResult - WSA_WAIT_EVENT_0;
         if (eventIndex == 0 || eventIndex >= eventCount) break;
+        if (eventIndex == trialEventIndex)
+        {
+            m_trialState.HandleRegistryNotification();
+            RefreshTrialEnforcement();
+            continue;
+        }
         if (eventIndex == 1)
         {
             WSAResetEvent(m_reconfigureEvent);
+            if (m_trialMutePending.exchange(false))
+            {
+                ApplyTrialMuteOnReceiverThread();
+                std::unique_lock reconfigureLock(m_reconfigureMutex);
+                if (m_reconfigurePending)
+                {
+                    m_reconfigureResult = HRESULT_FROM_WIN32(ERROR_ACCESS_DISABLED_BY_POLICY);
+                    m_reconfigurePending = false;
+                    m_reconfigureFinished = true;
+                    reconfigureLock.unlock();
+                    m_reconfigureComplete.notify_all();
+                }
+                continue;
+            }
+
             std::unique_lock reconfigureLock(m_reconfigureMutex);
             if (m_reconfigurePending)
             {
                 auto& port = *m_ports[m_reconfigurePortIndex];
-                if (m_reconfigureMuted)
+                if (m_trialTrafficBlocked.load())
+                {
+                    port.Muted = true;
+                    m_reconfigureResult = HRESULT_FROM_WIN32(ERROR_ACCESS_DISABLED_BY_POLICY);
+                }
+                else if (m_reconfigureMuted)
                 {
                     CloseReceiveResources(port);
                     m_reconfigureResult = S_OK;
@@ -756,11 +1014,21 @@ void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
                 else
                 {
                     const auto createResult = CreateReceiveResources(port);
-                    if (SUCCEEDED(createResult))
+                    if (SUCCEEDED(createResult) && !m_trialTrafficBlocked.load())
                     {
                         port.Muted = false;
+                        m_reconfigureResult = S_OK;
                     }
-                    m_reconfigureResult = createResult;
+                    else if (SUCCEEDED(createResult))
+                    {
+                        CloseReceiveResources(port);
+                        port.Muted = true;
+                        m_reconfigureResult = HRESULT_FROM_WIN32(ERROR_ACCESS_DISABLED_BY_POLICY);
+                    }
+                    else
+                    {
+                        m_reconfigureResult = createResult;
+                    }
                 }
                 m_reconfigurePending = false;
                 m_reconfigureFinished = true;
@@ -803,6 +1071,7 @@ void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
                 ++port.MalformedIncomingCount;
                 continue;
             }
+            if (!RefreshTrialEnforcement()) continue;
             if (port.Muted) continue;
             if (!m_loopbackEnabled && IsLocalAddress(source.sin_addr.s_addr)) continue;
 
@@ -826,18 +1095,25 @@ void IpMidiNetworkEngine::DispatcherWorker(std::stop_token stopToken)
             if (m_stopping || stopToken.stop_requested()) break;
             if (!TryDequeueIncoming(portIndex, packet)) continue;
         }
+        if (!RefreshTrialEnforcement()) continue;
         DispatchIncomingPacket(*m_ports[portIndex], packet);
     }
 }
 
 void IpMidiNetworkEngine::DispatchIncomingPacket(PortContext& port, IpMidiPacket const& packet)
 {
-    if (port.Muted) return;
+    if (port.Muted || !RefreshTrialEnforcement()) return;
     std::array<uint32_t, IP_MIDI_MAX_DATAGRAM_SIZE> umpWords{};
     size_t umpWordCount = 0;
     {
-        std::scoped_lock converterLock(port.IncomingConverterMutex);
+        std::unique_lock converterLock(port.IncomingConverterMutex);
         if (port.Muted) return;
+        if (!m_trialState.IsTrafficAllowed())
+        {
+            converterLock.unlock();
+            RefreshTrialEnforcement();
+            return;
+        }
         for (uint16_t index = 0; index < packet.Length; ++index)
         {
             port.ByteStreamToUmp.bytestreamParse(packet.Bytes[index]);
@@ -853,13 +1129,20 @@ void IpMidiNetworkEngine::DispatchIncomingPacket(PortContext& port, IpMidiPacket
         }
     }
     if (umpWordCount == 0) return;
+    if (!RefreshTrialEnforcement()) return;
 
-    std::scoped_lock dispatchLock(port.CallbackDispatchMutex);
+    std::unique_lock dispatchLock(port.CallbackDispatchMutex);
     if (m_stopping || port.Muted) return;
     for (auto const& registration : port.Callbacks)
     {
         if (registration.Id != 0 && registration.Callback != nullptr)
         {
+            if (!m_trialState.IsTrafficAllowed())
+            {
+                dispatchLock.unlock();
+                RefreshTrialEnforcement();
+                return;
+            }
             LOG_IF_FAILED(registration.Callback->Callback(
                 MessageOptionFlags_ContextContainsGroupIndex,
                 umpWords.data(),
