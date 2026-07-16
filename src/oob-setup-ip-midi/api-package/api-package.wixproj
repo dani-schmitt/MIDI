@@ -1,7 +1,7 @@
 <Project Sdk="WixToolset.Sdk/4.0.2">
   <PropertyGroup>
     <IpMidiEdition Condition="'$(IpMidiEdition)' == ''">Retail</IpMidiEdition>
-    <IpMidiMsiVersion>1.0.19.0</IpMidiMsiVersion>
+    <IpMidiMsiVersion>1.0.20.0</IpMidiMsiVersion>
     <IpMidiRetailMsiUpgradeCode>eab8a399-74da-4542-a69b-1d8be52a83b8</IpMidiRetailMsiUpgradeCode>
     <IpMidiTrialMsiUpgradeCode>f8495e78-7768-4e5a-b997-98f5c13102ab</IpMidiTrialMsiUpgradeCode>
 

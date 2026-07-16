@@ -53,8 +53,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,6
- PRODUCTVERSION 1,0,0,6
+ FILEVERSION 1,0,0,7
+ PRODUCTVERSION 1,0,0,7
  FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
 #ifdef IPMIDI_TRIAL
  FILEFLAGS VS_FF_SPECIALBUILD
@@ -83,8 +83,8 @@ BEGIN
             VALUE "InternalName", "Midi2.IpMidiTransport.dll"
             VALUE "OriginalFilename", "Midi2.IpMidiTransport.dll"
 
-            VALUE "FileVersion", "1.0.0.6"
-            VALUE "ProductVersion", "1.0.0.6"
+            VALUE "FileVersion", "1.0.0.7"
+            VALUE "ProductVersion", "1.0.0.7"
 #ifdef IPMIDI_TRIAL
             VALUE "SpecialBuild", "Trial"
 #endif

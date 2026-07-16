@@ -9,6 +9,7 @@ namespace
     constexpr wchar_t SetLoopbackCommand[] = L"setLoopback";
     constexpr wchar_t GetMuteMaskCommand[] = L"getMuteMask";
     constexpr wchar_t GetTrialStatusCommand[] = L"getTrialStatus";
+    constexpr wchar_t GetNetworkStatusCommand[] = L"getNetworkStatus";
     constexpr wchar_t EnabledArgument[] = L"enabled";
     constexpr wchar_t MutedProperty[] = L"muted";
     constexpr wchar_t MuteMaskProperty[] = L"muteMask";
@@ -16,6 +17,12 @@ namespace
     constexpr wchar_t StateProperty[] = L"state";
     constexpr wchar_t RemainingSecondsProperty[] = L"remainingSeconds";
     constexpr wchar_t RebootRequiredProperty[] = L"rebootRequired";
+    constexpr wchar_t SafetyMuteMaskProperty[] = L"safetyMuteMask";
+    constexpr wchar_t EffectiveMuteMaskProperty[] = L"effectiveMuteMask";
+    constexpr wchar_t OverflowMaskProperty[] = L"overflowMask";
+    constexpr wchar_t ReceiveFailureMaskProperty[] = L"receiveFailureMask";
+    constexpr wchar_t SendFailureMaskProperty[] = L"sendFailureMask";
+    constexpr wchar_t GenerationProperty[] = L"generation";
 
     wchar_t const* TrialStateName(IpMidiTrialStateKind state) noexcept
     {
@@ -58,6 +65,17 @@ namespace
             json::JsonValue::CreateNumberValue(status.RemainingSeconds));
         responseObject.SetNamedValue(RebootRequiredProperty,
             json::JsonValue::CreateBooleanValue(status.RebootRequired));
+    }
+
+    void SetNetworkStatusResponse(json::JsonObject& responseObject, IpMidiNetworkStatus const& status)
+    {
+        internal::SetConfigurationResponseObjectSuccess(responseObject);
+        responseObject.SetNamedValue(SafetyMuteMaskProperty, json::JsonValue::CreateNumberValue(status.SafetyMuteMask));
+        responseObject.SetNamedValue(EffectiveMuteMaskProperty, json::JsonValue::CreateNumberValue(status.EffectiveMuteMask));
+        responseObject.SetNamedValue(OverflowMaskProperty, json::JsonValue::CreateNumberValue(status.OverflowMask));
+        responseObject.SetNamedValue(ReceiveFailureMaskProperty, json::JsonValue::CreateNumberValue(status.ReceiveFailureMask));
+        responseObject.SetNamedValue(SendFailureMaskProperty, json::JsonValue::CreateNumberValue(status.SendFailureMask));
+        responseObject.SetNamedValue(GenerationProperty, json::JsonValue::CreateNumberValue(status.Generation));
     }
 }
 
@@ -164,6 +182,12 @@ HRESULT CMidi2IpMidiConfigurationManager::ProcessCommand(
         if (command.Command() == GetMuteMaskCommand)
         {
             SetMuteMaskResponse(responseObject, networkEngine->EffectiveMuteMask());
+            return S_OK;
+        }
+
+        if (command.Command() == GetNetworkStatusCommand)
+        {
+            SetNetworkStatusResponse(responseObject, networkEngine->GetNetworkStatus());
             return S_OK;
         }
 
@@ -275,7 +299,11 @@ HRESULT CMidi2IpMidiConfigurationManager::ChangePortMutedState(
 
         const bool previousMuted = networkEngine->IsPortConfiguredMuted(portIndex);
         const auto previousMask = networkEngine->ConfiguredMuteMask();
-        if (previousMuted == muted)
+        const auto previousNetworkStatus = networkEngine->GetNetworkStatus();
+        const auto portBit = 1u << portIndex;
+        const bool safetyMuted = (previousNetworkStatus.SafetyMuteMask & portBit) != 0;
+        const bool previousEffectiveMuted = (previousNetworkStatus.EffectiveMuteMask & portBit) != 0;
+        if (previousMuted == muted && (muted || !safetyMuted))
         {
             SetMuteResponse(responseObject, muted, networkEngine->EffectiveMuteMask());
             return S_OK;
@@ -304,13 +332,14 @@ HRESULT CMidi2IpMidiConfigurationManager::ChangePortMutedState(
         {
             definition->ConfiguredMuted = previousMuted;
             const auto rollbackResult = networkEngine->SetPortMuted(portIndex, previousMuted);
+            networkEngine->RestorePortSafetyMute(portIndex, previousNetworkStatus);
             if (FAILED(rollbackResult) && networkEngine->TrialMuteLocked())
             {
                 networkEngine->RestorePortConfiguredMuteState(portIndex, previousMuted);
             }
             LOG_IF_FAILED(rollbackResult);
             LOG_IF_FAILED(endpointManager->UpdateEndpointMutedStateProperty(
-                definition, networkEngine->TrialMuteLocked() ? true : previousMuted));
+                definition, networkEngine->TrialMuteLocked() ? true : previousEffectiveMuted));
             internal::SetConfigurationResponseObjectFailWithErrorCode(
                 responseObject, static_cast<uint32_t>(propertyResult), L"Unable to update the MIDI endpoint mute state.");
             return S_OK;
@@ -332,13 +361,14 @@ HRESULT CMidi2IpMidiConfigurationManager::ChangePortMutedState(
         if (FAILED(registryResult))
         {
             const auto rollbackResult = networkEngine->SetPortMuted(portIndex, previousMuted);
+            networkEngine->RestorePortSafetyMute(portIndex, previousNetworkStatus);
             if (FAILED(rollbackResult) && networkEngine->TrialMuteLocked())
             {
                 networkEngine->RestorePortConfiguredMuteState(portIndex, previousMuted);
             }
             definition->ConfiguredMuted = previousMuted;
             const auto propertyRollbackResult = endpointManager->UpdateEndpointMutedStateProperty(
-                definition, networkEngine->TrialMuteLocked() ? true : previousMuted);
+                definition, networkEngine->TrialMuteLocked() ? true : previousEffectiveMuted);
             LOG_IF_FAILED(rollbackResult);
             LOG_IF_FAILED(propertyRollbackResult);
             internal::SetConfigurationResponseObjectFailWithErrorCode(

@@ -38,6 +38,7 @@ public:
     );
 
     HRESULT ApplyTrialMuteToAllEndpoints();
+    HRESULT ApplySafetyMuteToEndpoint(_In_ uint8_t portIndex);
 
     bool IsInitialized() { return m_initialized; }
 

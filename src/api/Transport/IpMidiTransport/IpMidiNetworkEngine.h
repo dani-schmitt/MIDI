@@ -22,6 +22,18 @@
 inline constexpr size_t IP_MIDI_MAX_DATAGRAM_SIZE = 1280;
 inline constexpr size_t IP_MIDI_QUEUE_CAPACITY = 256;
 inline constexpr size_t IP_MIDI_MAX_CALLBACKS_PER_PORT = 16;
+inline constexpr uint32_t IP_MIDI_OVERFLOW_TRIP_COUNT = 64;
+inline constexpr uint64_t IP_MIDI_OVERFLOW_WINDOW_MILLISECONDS = 2000;
+
+struct IpMidiNetworkStatus
+{
+    uint32_t SafetyMuteMask{};
+    uint32_t EffectiveMuteMask{};
+    uint32_t OverflowMask{};
+    uint32_t ReceiveFailureMask{};
+    uint32_t SendFailureMask{};
+    uint32_t Generation{};
+};
 
 struct IpMidiPacket
 {
@@ -34,6 +46,7 @@ class IpMidiNetworkEngine
 {
 public:
     using TrialMuteAppliedCallback = std::function<HRESULT()>;
+    using SafetyMuteAppliedCallback = std::function<HRESULT(uint8_t)>;
 
     HRESULT Initialize(_In_ bool loopbackEnabled);
     HRESULT PreparePort(_In_ uint8_t portIndex, _In_ bool muted);
@@ -54,15 +67,18 @@ public:
     IpMidiTrialStatus GetTrialStatus() noexcept;
     bool TrialMuteLocked() noexcept;
     void SetTrialMuteAppliedCallback(_In_ TrialMuteAppliedCallback callback);
+    void SetSafetyMuteAppliedCallback(_In_ SafetyMuteAppliedCallback callback);
 
     HRESULT SetLoopbackEnabled(_In_ bool enabled);
     bool LoopbackEnabled() const noexcept { return m_loopbackEnabled.load(); }
     HRESULT SetPortMuted(_In_ uint8_t portIndex, _In_ bool muted);
     void RestorePortConfiguredMuteState(_In_ uint8_t portIndex, _In_ bool muted) noexcept;
+    void RestorePortSafetyMute(_In_ uint8_t portIndex, _In_ IpMidiNetworkStatus const& previousStatus) noexcept;
     bool IsPortConfiguredMuted(_In_ uint8_t portIndex) const noexcept;
     bool IsPortEffectivelyMuted(_In_ uint8_t portIndex) const noexcept;
     uint32_t ConfiguredMuteMask() const noexcept;
     uint32_t EffectiveMuteMask() const noexcept;
+    IpMidiNetworkStatus GetNetworkStatus() const noexcept;
 
 private:
     struct CallbackRegistration
@@ -103,7 +119,15 @@ private:
         bytestreamToUMP ByteStreamToUmp;
 
         std::atomic<bool> ConfiguredMuted{};
+        std::atomic<bool> SafetyMuted{};
         std::atomic<bool> Muted{};
+
+        std::array<uint64_t, IP_MIDI_OVERFLOW_TRIP_COUNT> OutgoingOverflowTimestamps{};
+        size_t OutgoingOverflowTimestampHead{};
+        size_t OutgoingOverflowTimestampCount{};
+        std::array<uint64_t, IP_MIDI_OVERFLOW_TRIP_COUNT> IncomingOverflowTimestamps{};
+        size_t IncomingOverflowTimestampHead{};
+        size_t IncomingOverflowTimestampCount{};
 
         std::atomic<uint64_t> OutgoingDropCount{};
         std::atomic<uint64_t> IncomingDropCount{};
@@ -112,7 +136,11 @@ private:
     };
 
     HRESULT CreateSharedResources();
+    HRESULT CreateConfiguredSendSocket(_Out_ SOCKET& sendSocket);
+    HRESULT RecreateSendSocket();
+    HRESULT SendPacketWithRecovery(_In_ sockaddr_in const& destination, _In_ IpMidiPacket const& packet);
     HRESULT CreateReceiveResources(_In_ PortContext& port);
+    HRESULT RecoverReceiveResources(_In_ PortContext& port);
     void CloseReceiveResources(_In_ PortContext& port);
     void CloseSharedResources();
     void ResetPortData(_In_ PortContext& port);
@@ -134,6 +162,10 @@ private:
     void ApplyTrialTrafficBlock() noexcept;
     void ApplyTrialMuteOnReceiverThread() noexcept;
     void NotifyTrialMuteApplied() noexcept;
+    void RequestSafetyMute(_In_ uint8_t portIndex, _In_ uint32_t reasonMask) noexcept;
+    void ApplyPendingSafetyMutesOnReceiverThread() noexcept;
+    void ClearSafetyFault(_In_ PortContext& port) noexcept;
+    void NotifySafetyMuteApplied(_In_ uint8_t portIndex) noexcept;
 
     PortContext* GetPort(_In_ uint8_t portIndex) const noexcept;
 
@@ -146,6 +178,7 @@ private:
     std::condition_variable m_outgoingWakeup;
     std::condition_variable m_incomingWakeup;
     std::mutex m_trialCallbackMutex;
+    std::mutex m_safetyCallbackMutex;
 
     std::array<std::unique_ptr<PortContext>, IP_MIDI_MAX_PORT_COUNT> m_ports{};
     uint8_t m_portCount{};
@@ -170,7 +203,14 @@ private:
     std::atomic<bool> m_loopbackEnabled{};
     std::atomic<bool> m_trialTrafficBlocked{};
     std::atomic<bool> m_trialMutePending{};
+    std::atomic<uint32_t> m_safetyMutePendingMask{};
+    std::atomic<uint32_t> m_safetyMuteMask{};
+    std::atomic<uint32_t> m_overflowMask{};
+    std::atomic<uint32_t> m_receiveFailureMask{};
+    std::atomic<uint32_t> m_sendFailureMask{};
+    std::atomic<uint32_t> m_networkStatusGeneration{};
     TrialMuteAppliedCallback m_trialMuteAppliedCallback;
+    SafetyMuteAppliedCallback m_safetyMuteAppliedCallback;
     IpMidiTrialState m_trialState;
 
     std::jthread m_senderThread;

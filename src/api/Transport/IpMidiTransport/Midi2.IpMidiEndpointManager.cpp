@@ -93,6 +93,8 @@ CMidi2IpMidiEndpointManager::Initialize(
     RETURN_HR_IF_NULL(E_UNEXPECTED, networkEngine);
     networkEngine->SetTrialMuteAppliedCallback([this]() noexcept
         { return ApplyTrialMuteToAllEndpoints(); });
+    networkEngine->SetSafetyMuteAppliedCallback([this](uint8_t portIndex) noexcept
+        { return ApplySafetyMuteToEndpoint(portIndex); });
 
     m_initialized = true;
     const auto wantedPorts = IpMidiRegistrySettings::ReadWantedPorts();
@@ -350,6 +352,12 @@ HRESULT CMidi2IpMidiEndpointManager::ApplyTrialMuteToAllEndpoints()
             TraceLoggingUInt32(static_cast<uint32_t>(m_createdEndpoints.size()), "endpoint count"));
     }
     return firstFailure;
+}
+
+HRESULT CMidi2IpMidiEndpointManager::ApplySafetyMuteToEndpoint(uint8_t portIndex)
+{
+    RETURN_HR_IF(E_INVALIDARG, portIndex >= m_createdEndpoints.size());
+    return UpdateEndpointMutedStateProperty(m_createdEndpoints[portIndex], true);
 }
 
 

@@ -3,6 +3,33 @@
 
 #include "pch.h"
 
+namespace
+{
+    constexpr uint32_t SafetyFaultOverflow = 0x1;
+    constexpr uint32_t SafetyFaultReceive = 0x2;
+    constexpr uint32_t SafetyFaultSend = 0x4;
+
+    bool RecordOverflowDrop(
+        std::array<uint64_t, IP_MIDI_OVERFLOW_TRIP_COUNT>& timestamps,
+        size_t& head,
+        size_t& count,
+        uint64_t now) noexcept
+    {
+        while (count > 0 &&
+            now - timestamps[head] > IP_MIDI_OVERFLOW_WINDOW_MILLISECONDS)
+        {
+            head = (head + 1) % timestamps.size();
+            --count;
+        }
+        if (count < timestamps.size())
+        {
+            timestamps[(head + count) % timestamps.size()] = now;
+            ++count;
+        }
+        return count >= IP_MIDI_OVERFLOW_TRIP_COUNT;
+    }
+}
+
 HRESULT IpMidiNetworkEngine::Initialize(bool loopbackEnabled)
 {
     std::scoped_lock lifecycleLock(m_lifecycleMutex);
@@ -38,24 +65,11 @@ HRESULT IpMidiNetworkEngine::CreateSharedResources()
     }
     m_winsockStarted = true;
 
-    m_sendSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (m_sendSocket == INVALID_SOCKET)
+    const auto sendSocketResult = CreateConfiguredSendSocket(m_sendSocket);
+    if (FAILED(sendSocketResult))
     {
-        const auto error = WSAGetLastError();
         CloseSharedResources();
-        return HRESULT_FROM_WIN32(error);
-    }
-
-    u_char multicastTtl = 1;
-    u_char multicastLoopback = m_loopbackEnabled ? 1 : 0;
-    if (setsockopt(m_sendSocket, IPPROTO_IP, IP_MULTICAST_TTL,
-            reinterpret_cast<char*>(&multicastTtl), sizeof(multicastTtl)) == SOCKET_ERROR ||
-        setsockopt(m_sendSocket, IPPROTO_IP, IP_MULTICAST_LOOP,
-            reinterpret_cast<char*>(&multicastLoopback), sizeof(multicastLoopback)) == SOCKET_ERROR)
-    {
-        const auto error = WSAGetLastError();
-        CloseSharedResources();
-        return HRESULT_FROM_WIN32(error);
+        return sendSocketResult;
     }
 
     m_stopEvent = WSACreateEvent();
@@ -76,6 +90,92 @@ HRESULT IpMidiNetworkEngine::CreateSharedResources()
 
     RefreshLocalIpv4Addresses();
     return S_OK;
+}
+
+HRESULT IpMidiNetworkEngine::CreateConfiguredSendSocket(SOCKET& sendSocket)
+{
+    sendSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sendSocket == INVALID_SOCKET)
+    {
+        return HRESULT_FROM_WIN32(WSAGetLastError());
+    }
+
+    const u_char multicastTtl = 1;
+    const u_char multicastLoopback = m_loopbackEnabled ? 1 : 0;
+    if (setsockopt(sendSocket, IPPROTO_IP, IP_MULTICAST_TTL,
+            reinterpret_cast<char const*>(&multicastTtl), sizeof(multicastTtl)) == SOCKET_ERROR ||
+        setsockopt(sendSocket, IPPROTO_IP, IP_MULTICAST_LOOP,
+            reinterpret_cast<char const*>(&multicastLoopback), sizeof(multicastLoopback)) == SOCKET_ERROR)
+    {
+        const auto error = WSAGetLastError();
+        closesocket(sendSocket);
+        sendSocket = INVALID_SOCKET;
+        return HRESULT_FROM_WIN32(error);
+    }
+    return S_OK;
+}
+
+HRESULT IpMidiNetworkEngine::RecreateSendSocket()
+{
+    std::scoped_lock sendSocketLock(m_sendSocketMutex);
+    SOCKET replacement{ INVALID_SOCKET };
+    RETURN_IF_FAILED(CreateConfiguredSendSocket(replacement));
+    const auto previous = m_sendSocket;
+    m_sendSocket = replacement;
+    if (previous != INVALID_SOCKET)
+    {
+        closesocket(previous);
+    }
+    return S_OK;
+}
+
+HRESULT IpMidiNetworkEngine::SendPacketWithRecovery(
+    sockaddr_in const& destination,
+    IpMidiPacket const& packet)
+{
+    std::scoped_lock sendSocketLock(m_sendSocketMutex);
+    auto sendPacket = [&]() noexcept
+    {
+        if (m_sendSocket == INVALID_SOCKET)
+        {
+            WSASetLastError(WSAENOTSOCK);
+            return SOCKET_ERROR;
+        }
+        return sendto(m_sendSocket, reinterpret_cast<char const*>(packet.Bytes.data()), packet.Length, 0,
+            reinterpret_cast<sockaddr const*>(&destination), sizeof(destination));
+    };
+
+    auto sent = sendPacket();
+    if (sent == packet.Length)
+    {
+        return S_OK;
+    }
+
+    const auto initialError = sent == SOCKET_ERROR ? WSAGetLastError() : WSAEMSGSIZE;
+    SOCKET replacement{ INVALID_SOCKET };
+    const auto createResult = CreateConfiguredSendSocket(replacement);
+    if (FAILED(createResult))
+    {
+        return createResult;
+    }
+
+    const auto previous = m_sendSocket;
+    m_sendSocket = replacement;
+    if (previous != INVALID_SOCKET)
+    {
+        closesocket(previous);
+    }
+
+    sent = sendPacket();
+    if (sent == packet.Length)
+    {
+        TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_WARNING,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"ipMIDI shared send socket recovered", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingInt32(initialError, "initial winsock error"));
+        return S_OK;
+    }
+    return HRESULT_FROM_WIN32(sent == SOCKET_ERROR ? WSAGetLastError() : WSAEMSGSIZE);
 }
 
 HRESULT IpMidiNetworkEngine::PreparePort(uint8_t portIndex, bool muted)
@@ -171,6 +271,21 @@ HRESULT IpMidiNetworkEngine::CreateReceiveResources(PortContext& port)
     return S_OK;
 }
 
+HRESULT IpMidiNetworkEngine::RecoverReceiveResources(PortContext& port)
+{
+    CloseReceiveResources(port);
+    ResetPortData(port);
+    const auto result = CreateReceiveResources(port);
+    if (SUCCEEDED(result))
+    {
+        TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_WARNING,
+            TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+            TraceLoggingWideString(L"ipMIDI receive socket recovered", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+            TraceLoggingUInt8(static_cast<uint8_t>(port.PortIndex + 1), "port number"));
+    }
+    return result;
+}
+
 void IpMidiNetworkEngine::RemoveLastPreparedPort()
 {
     std::scoped_lock lifecycleLock(m_lifecycleMutex);
@@ -198,6 +313,12 @@ HRESULT IpMidiNetworkEngine::Start()
     WSAResetEvent(m_stopEvent);
     WSAResetEvent(m_reconfigureEvent);
     m_trialMutePending = false;
+    m_safetyMutePendingMask = 0;
+    m_safetyMuteMask = 0;
+    m_overflowMask = 0;
+    m_receiveFailureMask = 0;
+    m_sendFailureMask = 0;
+    m_networkStatusGeneration = 0;
 
     RefreshTrialEnforcement();
     if (m_trialTrafficBlocked)
@@ -297,6 +418,10 @@ void IpMidiNetworkEngine::Shutdown()
         std::scoped_lock callbackLock(m_trialCallbackMutex);
         m_trialMuteAppliedCallback = nullptr;
     }
+    {
+        std::scoped_lock callbackLock(m_safetyCallbackMutex);
+        m_safetyMuteAppliedCallback = nullptr;
+    }
     CloseSharedResources();
     m_initialized = false;
 }
@@ -394,10 +519,29 @@ uint32_t IpMidiNetworkEngine::EffectiveMuteMask() const noexcept
     return mask;
 }
 
+IpMidiNetworkStatus IpMidiNetworkEngine::GetNetworkStatus() const noexcept
+{
+    return IpMidiNetworkStatus
+    {
+        m_safetyMuteMask.load(),
+        EffectiveMuteMask(),
+        m_overflowMask.load(),
+        m_receiveFailureMask.load(),
+        m_sendFailureMask.load(),
+        m_networkStatusGeneration.load()
+    };
+}
+
 void IpMidiNetworkEngine::SetTrialMuteAppliedCallback(TrialMuteAppliedCallback callback)
 {
     std::scoped_lock callbackLock(m_trialCallbackMutex);
     m_trialMuteAppliedCallback = std::move(callback);
+}
+
+void IpMidiNetworkEngine::SetSafetyMuteAppliedCallback(SafetyMuteAppliedCallback callback)
+{
+    std::scoped_lock callbackLock(m_safetyCallbackMutex);
+    m_safetyMuteAppliedCallback = std::move(callback);
 }
 
 void IpMidiNetworkEngine::NotifyPortOpened() noexcept
@@ -509,15 +653,119 @@ void IpMidiNetworkEngine::NotifyTrialMuteApplied() noexcept
     }
 }
 
+void IpMidiNetworkEngine::RequestSafetyMute(uint8_t portIndex, uint32_t reasonMask) noexcept
+{
+    auto port = GetPort(portIndex);
+    if (port == nullptr || m_trialTrafficBlocked.load())
+    {
+        return;
+    }
+
+    const uint32_t portBit = 1u << portIndex;
+    bool statusChanged{};
+    if ((reasonMask & SafetyFaultOverflow) != 0)
+    {
+        statusChanged = (m_overflowMask.fetch_or(portBit) & portBit) == 0 || statusChanged;
+    }
+    if ((reasonMask & SafetyFaultReceive) != 0)
+    {
+        statusChanged = (m_receiveFailureMask.fetch_or(portBit) & portBit) == 0 || statusChanged;
+    }
+    if ((reasonMask & SafetyFaultSend) != 0)
+    {
+        statusChanged = (m_sendFailureMask.fetch_or(portBit) & portBit) == 0 || statusChanged;
+    }
+
+    const bool newlyLatched = !port->SafetyMuted.exchange(true);
+    port->Muted = true;
+    m_safetyMuteMask.fetch_or(portBit);
+    m_safetyMutePendingMask.fetch_or(portBit);
+    if (newlyLatched || statusChanged)
+    {
+        ++m_networkStatusGeneration;
+    }
+
+    m_outgoingWakeup.notify_all();
+    m_incomingWakeup.notify_all();
+    if (m_reconfigureEvent != WSA_INVALID_EVENT)
+    {
+        WSASetEvent(m_reconfigureEvent);
+    }
+
+    TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
+        TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+        TraceLoggingWideString(L"ipMIDI port safety mute requested", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+        TraceLoggingUInt8(static_cast<uint8_t>(portIndex + 1), "port number"),
+        TraceLoggingUInt32(reasonMask, "fault reason mask"),
+        TraceLoggingBool(newlyLatched, "newly latched"));
+}
+
+void IpMidiNetworkEngine::ApplyPendingSafetyMutesOnReceiverThread() noexcept
+{
+    const auto pendingMask = m_safetyMutePendingMask.exchange(0);
+    for (uint8_t index = 0; index < m_portCount; ++index)
+    {
+        if ((pendingMask & (1u << index)) == 0)
+        {
+            continue;
+        }
+
+        auto& port = *m_ports[index];
+        port.SafetyMuted = true;
+        port.Muted = true;
+        {
+            std::scoped_lock sendLock(port.SendMutex);
+        }
+        {
+            std::scoped_lock dispatchLock(port.CallbackDispatchMutex);
+        }
+        CloseReceiveResources(port);
+        ResetPortData(port);
+        NotifySafetyMuteApplied(index);
+    }
+}
+
+void IpMidiNetworkEngine::ClearSafetyFault(PortContext& port) noexcept
+{
+    const uint32_t portBit = 1u << port.PortIndex;
+    const bool wasSafetyMuted = port.SafetyMuted.exchange(false);
+    m_safetyMutePendingMask.fetch_and(~portBit);
+    m_safetyMuteMask.fetch_and(~portBit);
+    m_overflowMask.fetch_and(~portBit);
+    m_receiveFailureMask.fetch_and(~portBit);
+    m_sendFailureMask.fetch_and(~portBit);
+    if (wasSafetyMuted)
+    {
+        ++m_networkStatusGeneration;
+    }
+}
+
+void IpMidiNetworkEngine::NotifySafetyMuteApplied(uint8_t portIndex) noexcept
+{
+    SafetyMuteAppliedCallback callback;
+    {
+        std::scoped_lock callbackLock(m_safetyCallbackMutex);
+        callback = m_safetyMuteAppliedCallback;
+    }
+    if (callback)
+    {
+        LOG_IF_FAILED(callback(portIndex));
+    }
+}
+
 void IpMidiNetworkEngine::ResetPortData(PortContext& port)
 {
     {
         std::scoped_lock queueLock(m_outgoingMutex);
         port.OutgoingQueue.clear();
+        port.OutgoingOverflowTimestampHead = 0;
+        port.OutgoingOverflowTimestampCount = 0;
     }
     {
         std::scoped_lock queueLock(m_incomingMutex);
         port.IncomingQueue.clear();
+        port.IncomingOverflowTimestampHead = 0;
+        port.IncomingOverflowTimestampCount = 0;
     }
     {
         std::scoped_lock converterLock(port.OutgoingConverterMutex);
@@ -536,13 +784,14 @@ HRESULT IpMidiNetworkEngine::SetPortMuted(uint8_t portIndex, bool muted)
     RETURN_HR_IF(E_INVALIDARG, port == nullptr);
     RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_SERVICE_NOT_ACTIVE), m_stopping || !m_started);
     RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_ACCESS_DISABLED_BY_POLICY), TrialMuteLocked());
-    if (port->ConfiguredMuted.load() == muted) return S_OK;
+    if (port->ConfiguredMuted.load() == muted && (muted || !port->SafetyMuted.load())) return S_OK;
 
     std::unique_lock reconfigureLock(m_reconfigureMutex);
     RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_BUSY), m_reconfigurePending);
     RETURN_HR_IF(HRESULT_FROM_WIN32(ERROR_ACCESS_DISABLED_BY_POLICY), TrialMuteLocked());
 
     const bool previousConfiguredMuted = port->ConfiguredMuted.load();
+    const bool previousSafetyMuted = port->SafetyMuted.load();
     port->ConfiguredMuted = muted;
 
     if (muted)
@@ -571,7 +820,8 @@ HRESULT IpMidiNetworkEngine::SetPortMuted(uint8_t portIndex, bool muted)
     {
         m_reconfigurePending = false;
         port->ConfiguredMuted = previousConfiguredMuted;
-        port->Muted = m_trialTrafficBlocked.load() || previousConfiguredMuted;
+        port->SafetyMuted = previousSafetyMuted;
+        port->Muted = m_trialTrafficBlocked.load() || previousSafetyMuted || previousConfiguredMuted;
         return HRESULT_FROM_WIN32(WSAGetLastError());
     }
 
@@ -586,7 +836,8 @@ HRESULT IpMidiNetworkEngine::SetPortMuted(uint8_t portIndex, bool muted)
     if (FAILED(result))
     {
         port->ConfiguredMuted = previousConfiguredMuted;
-        port->Muted = m_trialTrafficBlocked.load() || previousConfiguredMuted;
+        port->SafetyMuted = previousSafetyMuted;
+        port->Muted = m_trialTrafficBlocked.load() || previousSafetyMuted || previousConfiguredMuted;
     }
 
     if (SUCCEEDED(result))
@@ -616,8 +867,25 @@ void IpMidiNetworkEngine::RestorePortConfiguredMuteState(uint8_t portIndex, bool
     port->ConfiguredMuted = muted;
     if (!m_trialTrafficBlocked.load())
     {
-        port->Muted = muted;
+        port->Muted = m_trialTrafficBlocked.load() || port->SafetyMuted.load() || muted;
     }
+}
+
+void IpMidiNetworkEngine::RestorePortSafetyMute(
+    uint8_t portIndex,
+    IpMidiNetworkStatus const& previousStatus) noexcept
+{
+    const uint32_t portBit = 1u << portIndex;
+    if ((previousStatus.SafetyMuteMask & portBit) == 0)
+    {
+        return;
+    }
+
+    uint32_t reasonMask{};
+    if ((previousStatus.OverflowMask & portBit) != 0) reasonMask |= SafetyFaultOverflow;
+    if ((previousStatus.ReceiveFailureMask & portBit) != 0) reasonMask |= SafetyFaultReceive;
+    if ((previousStatus.SendFailureMask & portBit) != 0) reasonMask |= SafetyFaultSend;
+    RequestSafetyMute(portIndex, reasonMask == 0 ? SafetyFaultReceive : reasonMask);
 }
 
 void IpMidiNetworkEngine::RefreshLocalIpv4Addresses()
@@ -766,6 +1034,8 @@ void IpMidiNetworkEngine::UnregisterCallback(uint8_t portIndex, uint64_t registr
 bool IpMidiNetworkEngine::TryEnqueueOutgoing(PortContext& port, IpMidiPacket const& packet)
 {
     if (port.Muted || !RefreshTrialEnforcement()) return false;
+    bool queueWasFull{};
+    bool tripSafetyMute{};
     {
         std::unique_lock queueLock(m_outgoingMutex);
         if (port.Muted) return false;
@@ -777,15 +1047,27 @@ bool IpMidiNetworkEngine::TryEnqueueOutgoing(PortContext& port, IpMidiPacket con
         }
         if (port.OutgoingQueue.full())
         {
+            queueWasFull = true;
             ++port.OutgoingDropCount;
+            const auto now = GetTickCount64();
+            tripSafetyMute = RecordOverflowDrop(
+                port.OutgoingOverflowTimestamps,
+                port.OutgoingOverflowTimestampHead,
+                port.OutgoingOverflowTimestampCount,
+                now);
             TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_WARNING,
                 TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
                 TraceLoggingWideString(L"ipMIDI outgoing queue overflow", MIDI_TRACE_EVENT_MESSAGE_FIELD),
-                TraceLoggingUInt8(static_cast<uint8_t>(port.PortIndex + 1), "port number"));
-            return false;
+                TraceLoggingUInt8(static_cast<uint8_t>(port.PortIndex + 1), "port number"),
+                TraceLoggingUInt32(static_cast<uint32_t>(port.OutgoingOverflowTimestampCount), "window drop count"));
         }
-        port.OutgoingQueue.push_back(packet);
+        else
+        {
+            port.OutgoingQueue.push_back(packet);
+        }
     }
+    if (tripSafetyMute) RequestSafetyMute(port.PortIndex, SafetyFaultOverflow);
+    if (queueWasFull) return false;
     m_outgoingWakeup.notify_one();
     return true;
 }
@@ -793,6 +1075,8 @@ bool IpMidiNetworkEngine::TryEnqueueOutgoing(PortContext& port, IpMidiPacket con
 bool IpMidiNetworkEngine::TryEnqueueIncoming(PortContext& port, IpMidiPacket const& packet)
 {
     if (port.Muted || !RefreshTrialEnforcement()) return false;
+    bool queueWasFull{};
+    bool tripSafetyMute{};
     {
         std::unique_lock queueLock(m_incomingMutex);
         if (port.Muted) return false;
@@ -804,15 +1088,27 @@ bool IpMidiNetworkEngine::TryEnqueueIncoming(PortContext& port, IpMidiPacket con
         }
         if (port.IncomingQueue.full())
         {
+            queueWasFull = true;
             ++port.IncomingDropCount;
+            const auto now = GetTickCount64();
+            tripSafetyMute = RecordOverflowDrop(
+                port.IncomingOverflowTimestamps,
+                port.IncomingOverflowTimestampHead,
+                port.IncomingOverflowTimestampCount,
+                now);
             TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_WARNING,
                 TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
                 TraceLoggingWideString(L"ipMIDI incoming queue overflow", MIDI_TRACE_EVENT_MESSAGE_FIELD),
-                TraceLoggingUInt8(static_cast<uint8_t>(port.PortIndex + 1), "port number"));
-            return false;
+                TraceLoggingUInt8(static_cast<uint8_t>(port.PortIndex + 1), "port number"),
+                TraceLoggingUInt32(static_cast<uint32_t>(port.IncomingOverflowTimestampCount), "window drop count"));
         }
-        port.IncomingQueue.push_back(packet);
+        else
+        {
+            port.IncomingQueue.push_back(packet);
+        }
     }
+    if (tripSafetyMute) RequestSafetyMute(port.PortIndex, SafetyFaultOverflow);
+    if (queueWasFull) return false;
     m_incomingWakeup.notify_one();
     return true;
 }
@@ -906,15 +1202,16 @@ void IpMidiNetworkEngine::SenderWorker(std::stop_token stopToken)
             continue;
         }
         destination.sin_port = htons(port.UdpPort);
-        const auto sent = sendto(m_sendSocket, reinterpret_cast<char const*>(packet.Bytes.data()), packet.Length, 0,
-            reinterpret_cast<sockaddr*>(&destination), sizeof(destination));
-        if (sent == SOCKET_ERROR || sent != packet.Length)
+        const auto sendResult = SendPacketWithRecovery(destination, packet);
+        sendLock.unlock();
+        if (FAILED(sendResult))
         {
             TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
                 TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
-                TraceLoggingWideString(L"ipMIDI multicast send failed", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+                TraceLoggingWideString(L"ipMIDI multicast send failed after socket recovery", MIDI_TRACE_EVENT_MESSAGE_FIELD),
                 TraceLoggingUInt8(static_cast<uint8_t>(portIndex + 1), "port number"),
-                TraceLoggingInt32(WSAGetLastError(), "winsock error"));
+                TraceLoggingHResult(sendResult, MIDI_TRACE_EVENT_HRESULT_FIELD));
+            RequestSafetyMute(portIndex, SafetyFaultSend);
         }
     }
 }
@@ -997,6 +1294,11 @@ void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
                 continue;
             }
 
+            if (m_safetyMutePendingMask.load() != 0)
+            {
+                ApplyPendingSafetyMutesOnReceiverThread();
+            }
+
             std::unique_lock reconfigureLock(m_reconfigureMutex);
             if (m_reconfigurePending)
             {
@@ -1013,9 +1315,13 @@ void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
                 }
                 else
                 {
-                    const auto createResult = CreateReceiveResources(port);
+                    const auto sendSocketResult = RecreateSendSocket();
+                    const auto createResult = SUCCEEDED(sendSocketResult)
+                        ? CreateReceiveResources(port)
+                        : sendSocketResult;
                     if (SUCCEEDED(createResult) && !m_trialTrafficBlocked.load())
                     {
+                        ClearSafetyFault(port);
                         port.Muted = false;
                         m_reconfigureResult = S_OK;
                     }
@@ -1041,8 +1347,38 @@ void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
         auto& port = *eventPorts[eventIndex];
         if (port.Muted) continue;
         WSANETWORKEVENTS networkEvents{};
-        if (WSAEnumNetworkEvents(port.ReceiveSocket, port.ReceiveEvent, &networkEvents) == SOCKET_ERROR) continue;
-        if ((networkEvents.lNetworkEvents & FD_READ) == 0 || networkEvents.iErrorCode[FD_READ_BIT] != 0) continue;
+        if (WSAEnumNetworkEvents(port.ReceiveSocket, port.ReceiveEvent, &networkEvents) == SOCKET_ERROR)
+        {
+            const auto error = WSAGetLastError();
+            const auto recoveryResult = RecoverReceiveResources(port);
+            if (FAILED(recoveryResult)) RequestSafetyMute(port.PortIndex, SafetyFaultReceive);
+            TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
+                TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+                TraceLoggingWideString(L"ipMIDI receive event enumeration failed", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+                TraceLoggingUInt8(static_cast<uint8_t>(port.PortIndex + 1), "port number"),
+                TraceLoggingInt32(error, "winsock error"),
+                TraceLoggingHResult(recoveryResult, "recovery result"));
+            continue;
+        }
+        const bool receiveEventFailed =
+            ((networkEvents.lNetworkEvents & FD_READ) != 0 && networkEvents.iErrorCode[FD_READ_BIT] != 0) ||
+            ((networkEvents.lNetworkEvents & FD_CLOSE) != 0);
+        if (receiveEventFailed)
+        {
+            const auto error = networkEvents.iErrorCode[FD_READ_BIT] != 0
+                ? networkEvents.iErrorCode[FD_READ_BIT]
+                : networkEvents.iErrorCode[FD_CLOSE_BIT];
+            const auto recoveryResult = RecoverReceiveResources(port);
+            if (FAILED(recoveryResult)) RequestSafetyMute(port.PortIndex, SafetyFaultReceive);
+            TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
+                TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
+                TraceLoggingWideString(L"ipMIDI receive socket event failed", MIDI_TRACE_EVENT_MESSAGE_FIELD),
+                TraceLoggingUInt8(static_cast<uint8_t>(port.PortIndex + 1), "port number"),
+                TraceLoggingInt32(error, "winsock error"),
+                TraceLoggingHResult(recoveryResult, "recovery result"));
+            continue;
+        }
+        if ((networkEvents.lNetworkEvents & FD_READ) == 0) continue;
 
         for (;;)
         {
@@ -1058,11 +1394,14 @@ void IpMidiNetworkEngine::ReceiverWorker(std::stop_token stopToken)
                 if (error == WSAEWOULDBLOCK) break;
                 if (!m_stopping)
                 {
+                    const auto recoveryResult = RecoverReceiveResources(port);
+                    if (FAILED(recoveryResult)) RequestSafetyMute(port.PortIndex, SafetyFaultReceive);
                     TraceLoggingWrite(MidiIpMidiTransportTelemetryProvider::Provider(), MIDI_TRACE_EVENT_ERROR,
                         TraceLoggingString(__FUNCTION__, MIDI_TRACE_EVENT_LOCATION_FIELD),
                         TraceLoggingWideString(L"ipMIDI multicast receive failed", MIDI_TRACE_EVENT_MESSAGE_FIELD),
                         TraceLoggingUInt8(static_cast<uint8_t>(port.PortIndex + 1), "port number"),
-                        TraceLoggingInt32(error, "winsock error"));
+                        TraceLoggingInt32(error, "winsock error"),
+                        TraceLoggingHResult(recoveryResult, "recovery result"));
                 }
                 break;
             }
