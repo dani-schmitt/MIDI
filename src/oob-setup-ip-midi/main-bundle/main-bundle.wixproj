@@ -2,18 +2,18 @@
   <PropertyGroup>
     <IpMidiEdition Condition="'$(IpMidiEdition)' == ''">Retail</IpMidiEdition>
     <OutputType>Bundle</OutputType>
-    <OutputName Condition="'$(IpMidiEdition)' == 'Retail'">WindowsMidiServicesIpMidiSetup</OutputName>
-    <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">WindowsMidiServicesIpMidiTrialSetup</OutputName>
-    <IpMidiBundleName Condition="'$(IpMidiEdition)' == 'Retail'">Windows MIDI Services ipMIDI Preview</IpMidiBundleName>
-    <IpMidiBundleName Condition="'$(IpMidiEdition)' == 'Trial'">Windows MIDI Services ipMIDI Trial Preview</IpMidiBundleName>
+    <OutputName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDISetup</OutputName>
+    <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDITrialSetup</OutputName>
+    <IpMidiBundleName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDI Ethernet Ports for MIDI Services</IpMidiBundleName>
+    <IpMidiBundleName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDI Ethernet Ports for MIDI Services (Trial)</IpMidiBundleName>
     <IpMidiBundleVersion Condition="'$(IpMidiEdition)' == 'Retail'">1.0.0-preview.1.31</IpMidiBundleVersion>
     <IpMidiBundleVersion Condition="'$(IpMidiEdition)' == 'Trial'">1.0.0-preview.1.30</IpMidiBundleVersion>
     <IpMidiRetailBundleUpgradeCode>410c75f8-4aa0-4e65-86d1-ed76df1e7dff</IpMidiRetailBundleUpgradeCode>
     <IpMidiTrialBundleUpgradeCode>f6176fc2-a1cf-43bc-8136-ed1381f5fc2a</IpMidiTrialBundleUpgradeCode>
     <IpMidiBundleUpgradeCode Condition="'$(IpMidiEdition)' == 'Retail'">$(IpMidiRetailBundleUpgradeCode)</IpMidiBundleUpgradeCode>
     <IpMidiBundleUpgradeCode Condition="'$(IpMidiEdition)' == 'Trial'">$(IpMidiTrialBundleUpgradeCode)</IpMidiBundleUpgradeCode>
-    <IpMidiMsiOutputName Condition="'$(IpMidiEdition)' == 'Retail'">WindowsMIDIServicesIpMidiSetup</IpMidiMsiOutputName>
-    <IpMidiMsiOutputName Condition="'$(IpMidiEdition)' == 'Trial'">WindowsMIDIServicesIpMidiTrialSetup</IpMidiMsiOutputName>
+    <IpMidiMsiOutputName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDISetup</IpMidiMsiOutputName>
+    <IpMidiMsiOutputName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDITrialSetup</IpMidiMsiOutputName>
     <IpMidiRetailMsiUpgradeCode>eab8a399-74da-4542-a69b-1d8be52a83b8</IpMidiRetailMsiUpgradeCode>
     <IpMidiTrialMsiUpgradeCode>f8495e78-7768-4e5a-b997-98f5c13102ab</IpMidiTrialMsiUpgradeCode>
     <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Retail'">$(MIDI_REPO_ROOT)build\staging</IpMidiStagingRoot>

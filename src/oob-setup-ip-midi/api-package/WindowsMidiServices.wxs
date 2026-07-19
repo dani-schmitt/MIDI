@@ -4,8 +4,8 @@
     <?define StagingSourceRootFolder=$(var.IpMidiStagingRoot) ?>
 
     <Package
-          Name="$(var.IpMidiPackageName) $(var.Platform)"
-          Manufacturer="Microsoft Corporation"
+          Name="$(var.IpMidiPackageName)"
+          Manufacturer="nerds.de"
           Version="$(var.IpMidiMsiVersion)"
           UpgradeCode="$(var.IpMidiMsiUpgradeCode)"
           Scope="perMachine"
@@ -16,7 +16,7 @@
         <MediaTemplate EmbedCab="yes" />
 
         <MajorUpgrade
-            DowngradeErrorMessage="A newer version of the Windows MIDI Services ipMIDI package is already installed." />
+            DowngradeErrorMessage="A newer version of ipMIDI Ethernet Ports for MIDI Services is already installed." />
 
         <?if $(var.IpMidiEdition) = Trial ?>
         <Upgrade Id="$(var.IpMidiRetailMsiUpgradeCode)">
@@ -26,7 +26,7 @@
                             Property="IPMIDI_RETAIL_EDITION_FOUND" />
         </Upgrade>
         <Launch Condition="Installed OR NOT IPMIDI_RETAIL_EDITION_FOUND"
-                Message="The Retail edition of Windows MIDI Services ipMIDI is already installed. Uninstall it, then use WindowsMidiServicesIpMidiTrialSetup.exe to install the Trial edition." />
+                Message="The Retail edition of ipMIDI Ethernet Ports for MIDI Services is already installed. Uninstall it, then use ipMIDITrialSetup.exe to install the Trial edition." />
         <?else?>
         <Property Id="IPMIDI_BURN_CROSS_EDITION" Secure="yes" />
         <Upgrade Id="$(var.IpMidiTrialMsiUpgradeCode)">
@@ -35,7 +35,7 @@
                             Property="IPMIDI_TRIAL_EDITION_FOUND" />
         </Upgrade>
         <Launch Condition="Installed OR NOT IPMIDI_TRIAL_EDITION_FOUND OR IPMIDI_BURN_CROSS_EDITION = 1"
-                Message="The Trial edition of Windows MIDI Services ipMIDI is installed. Use WindowsMidiServicesIpMidiSetup.exe to replace it with the Retail edition." />
+                Message="The Trial edition of ipMIDI Ethernet Ports for MIDI Services is installed. Use ipMIDISetup.exe to replace it with the Retail edition." />
         <?endif?>
 
 

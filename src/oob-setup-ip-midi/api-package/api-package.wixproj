@@ -5,11 +5,11 @@
     <IpMidiRetailMsiUpgradeCode>eab8a399-74da-4542-a69b-1d8be52a83b8</IpMidiRetailMsiUpgradeCode>
     <IpMidiTrialMsiUpgradeCode>f8495e78-7768-4e5a-b997-98f5c13102ab</IpMidiTrialMsiUpgradeCode>
 
-    <OutputName Condition="'$(IpMidiEdition)' == 'Retail'">WindowsMIDIServicesIpMidiSetup</OutputName>
-    <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">WindowsMIDIServicesIpMidiTrialSetup</OutputName>
+    <OutputName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDISetup</OutputName>
+    <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDITrialSetup</OutputName>
 
-    <IpMidiPackageName Condition="'$(IpMidiEdition)' == 'Retail'">Microsoft Windows MIDI Services ipMIDI</IpMidiPackageName>
-    <IpMidiPackageName Condition="'$(IpMidiEdition)' == 'Trial'">Microsoft Windows MIDI Services ipMIDI Trial</IpMidiPackageName>
+    <IpMidiPackageName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDI Ethernet Ports for MIDI Services</IpMidiPackageName>
+    <IpMidiPackageName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDI Ethernet Ports for MIDI Services (Trial)</IpMidiPackageName>
     <IpMidiMsiUpgradeCode Condition="'$(IpMidiEdition)' == 'Retail'">$(IpMidiRetailMsiUpgradeCode)</IpMidiMsiUpgradeCode>
     <IpMidiMsiUpgradeCode Condition="'$(IpMidiEdition)' == 'Trial'">$(IpMidiTrialMsiUpgradeCode)</IpMidiMsiUpgradeCode>
 

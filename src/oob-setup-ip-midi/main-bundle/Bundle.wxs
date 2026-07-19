@@ -11,11 +11,8 @@
     <?include $(StagingVersionIncludeFile) ?>
 
 
-    <!-- TODO: Gate on Windows 10 22H2 or later -->
-
-    <!--<Bundle Name="Microsoft Windows MIDI Services (Developer Preview 2)" -->
     <Bundle Name="$(var.IpMidiBundleName)"
-            Manufacturer="Microsoft Corporation"
+            Manufacturer="nerds.de"
             Version="$(var.IpMidiBundleVersion)"
             UpgradeCode="$(var.IpMidiBundleUpgradeCode)">
 
@@ -27,7 +24,7 @@
             UpgradeCode="$(var.IpMidiRetailMsiUpgradeCode)"
             Variable="IpMidiRetailProductState"
             Result="state" />
-        <bal:Condition Message="The Retail edition of Windows MIDI Services ipMIDI is already installed. Uninstall it before installing the Trial edition."
+        <bal:Condition Message="The Retail edition of ipMIDI Ethernet Ports for MIDI Services is already installed. Uninstall it before installing the Trial edition."
                        Condition="WixBundleInstalled OR NOT (IpMidiRetailProductState = 5)" />
         <?else?>
         <RelatedBundle Id="$(var.IpMidiTrialBundleUpgradeCode)" Action="upgrade" />
@@ -43,7 +40,7 @@
             Variable="DevModeEnabled"
             Result="value"/>
 
-        <bal:Condition Message="Developer mode in Windows Settings must be enabled to install this Windows MIDI Services preview package."
+        <bal:Condition Message="Developer mode in Windows Settings must be enabled to install ipMIDI Ethernet Ports for MIDI Services."
                  Condition="DevModeEnabled=1" />
 
         <WixVariable Id="WixUIDialogBmp" Value="midi_installer_logo.bmp" />
@@ -87,6 +84,7 @@
                 Id="$(var.IpMidiMsiOutputName)"
                 Vital="true"
                 Permanent="no"
+                Visible="no"
                 Compressed="yes"
                 SourceFile="$(var.IpMidiMsiOutputName).msi">
                 <?if $(var.IpMidiEdition) = Retail ?>
