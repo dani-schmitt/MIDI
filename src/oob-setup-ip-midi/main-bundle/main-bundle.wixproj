@@ -2,12 +2,11 @@
   <PropertyGroup>
     <IpMidiEdition Condition="'$(IpMidiEdition)' == ''">Retail</IpMidiEdition>
     <OutputType>Bundle</OutputType>
-    <OutputName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDISetup</OutputName>
-    <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDITrialSetup</OutputName>
+    <OutputName Condition="'$(IpMidiEdition)' == 'Retail'">setupipmidi</OutputName>
+    <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">setupipmiditrial</OutputName>
     <IpMidiBundleName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDI Ethernet Ports for MIDI Services</IpMidiBundleName>
     <IpMidiBundleName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDI Ethernet Ports for MIDI Services (Trial)</IpMidiBundleName>
-    <IpMidiBundleVersion Condition="'$(IpMidiEdition)' == 'Retail'">1.0.0-preview.1.31</IpMidiBundleVersion>
-    <IpMidiBundleVersion Condition="'$(IpMidiEdition)' == 'Trial'">1.0.0-preview.1.30</IpMidiBundleVersion>
+    <IpMidiBundleVersion>2.0.1</IpMidiBundleVersion>
     <IpMidiRetailBundleUpgradeCode>410c75f8-4aa0-4e65-86d1-ed76df1e7dff</IpMidiRetailBundleUpgradeCode>
     <IpMidiTrialBundleUpgradeCode>f6176fc2-a1cf-43bc-8136-ed1381f5fc2a</IpMidiTrialBundleUpgradeCode>
     <IpMidiBundleUpgradeCode Condition="'$(IpMidiEdition)' == 'Retail'">$(IpMidiRetailBundleUpgradeCode)</IpMidiBundleUpgradeCode>
@@ -18,8 +17,10 @@
     <IpMidiTrialMsiUpgradeCode>f8495e78-7768-4e5a-b997-98f5c13102ab</IpMidiTrialMsiUpgradeCode>
     <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Retail'">$(MIDI_REPO_ROOT)build\staging</IpMidiStagingRoot>
     <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Trial'">$(MIDI_REPO_ROOT)build\staging\ipmidi-trial</IpMidiStagingRoot>
+    <IpMidiMonRoot Condition="'$(IpMidiMonRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\midi2\IPMidiMon</IpMidiMonRoot>
+    <IpMidiRequireDeveloperMode Condition="'$(IpMidiRequireDeveloperMode)' == ''">true</IpMidiRequireDeveloperMode>
     <BuildDate>$([System.DateTime]::Now.ToString("yyyyMMddhhmm"))</BuildDate>
-    <DefineConstants>$(DefineConstants);BuildDate=$(BuildDate);IpMidiEdition=$(IpMidiEdition);IpMidiBundleName=$(IpMidiBundleName);IpMidiBundleVersion=$(IpMidiBundleVersion);IpMidiBundleUpgradeCode=$(IpMidiBundleUpgradeCode);IpMidiRetailBundleUpgradeCode=$(IpMidiRetailBundleUpgradeCode);IpMidiTrialBundleUpgradeCode=$(IpMidiTrialBundleUpgradeCode);IpMidiRetailMsiUpgradeCode=$(IpMidiRetailMsiUpgradeCode);IpMidiTrialMsiUpgradeCode=$(IpMidiTrialMsiUpgradeCode);IpMidiMsiOutputName=$(IpMidiMsiOutputName)</DefineConstants>
+    <DefineConstants>$(DefineConstants);BuildDate=$(BuildDate);IpMidiEdition=$(IpMidiEdition);IpMidiBundleName=$(IpMidiBundleName);IpMidiBundleVersion=$(IpMidiBundleVersion);IpMidiBundleUpgradeCode=$(IpMidiBundleUpgradeCode);IpMidiRetailBundleUpgradeCode=$(IpMidiRetailBundleUpgradeCode);IpMidiTrialBundleUpgradeCode=$(IpMidiTrialBundleUpgradeCode);IpMidiRetailMsiUpgradeCode=$(IpMidiRetailMsiUpgradeCode);IpMidiTrialMsiUpgradeCode=$(IpMidiTrialMsiUpgradeCode);IpMidiMsiOutputName=$(IpMidiMsiOutputName);IpMidiMonRoot=$(IpMidiMonRoot);IpMidiRequireDeveloperMode=$(IpMidiRequireDeveloperMode)</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(IpMidiEdition)' == 'Trial'">
     <OutputPath>bin\$(Platform)\$(Configuration)\Trial\</OutputPath>
@@ -32,7 +33,14 @@
     <SuppressValidation>true</SuppressValidation>
   </PropertyGroup>
   <ItemGroup>
-    <Content Include="midi_installer_logo_square.png" />
+    <Content Include="IpMidiTheme.xml" />
+    <Content Include="IpMidiTheme.wxl" />
+    <Content Include="Licence.rtf" />
+    <Content Include="ipmidi.ico" />
+    <Content Include="ipmidi-muted.ico" />
+    <Content Include="ipmidi-icon-master.png" />
+    <Content Include="ipmidi-muted-icon-master.png" />
+    <Content Include="ipmidi-setup-logo.png" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="WixToolset.Bal.wixext" Version="4.0.5" />
@@ -45,5 +53,12 @@
   <Target Name="ValidateIpMidiEdition" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(IpMidiEdition)' != 'Retail' and '$(IpMidiEdition)' != 'Trial'"
            Text="IpMidiEdition must be either Retail or Trial." />
+  </Target>
+  <Target Name="ValidateIpMidiBundleResources" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)IpMidiTheme.xml')" Text="The ipMIDI Burn theme is missing." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)IpMidiTheme.wxl')" Text="The ipMIDI Burn localization is missing." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)Licence.rtf')" Text="The ipMIDI Burn EULA is missing." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)ipmidi.ico')" Text="The ipMIDI installer icon is missing." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)ipmidi-setup-logo.png')" Text="The ipMIDI installer logo is missing." />
   </Target>
 </Project>

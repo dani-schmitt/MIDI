@@ -1,98 +1,169 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
-     xmlns:netfx="http://wixtoolset.org/schemas/v4/wxs/netfx"
-     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
-     >
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
-    <?define DependenciesSourceRootFolder=$(env.MIDI_REPO_ROOT)\build\dependencies ?>
-    <?define StagingSourceRootFolder=$(env.MIDI_REPO_ROOT)build\staging ?>
-    <?define StagingVersionIncludeFile=$(StagingSourceRootFolder)\version\BundleInfo.wxi ?>
+  <?define DependenciesSourceRootFolder=$(env.MIDI_REPO_ROOT)\build\dependencies ?>
 
-    <?include $(StagingVersionIncludeFile) ?>
+  <Bundle Name="$(var.IpMidiBundleName)"
+          Manufacturer="nerds.de"
+          Version="$(var.IpMidiBundleVersion)"
+          UpgradeCode="$(var.IpMidiBundleUpgradeCode)"
+          IconSourceFile="ipmidi.ico"
+          Copyright="Copyright (C) 2005 - 2026 nerds.de. All rights reserved."
+          AboutUrl="https://nerds.de">
 
+    <?if $(var.IpMidiEdition) = Trial ?>
+    <RelatedBundle Id="$(var.IpMidiRetailBundleUpgradeCode)" Action="detect" />
+    <Variable Name="IpMidiRetailProductState" Type="numeric" Value="2" />
+    <util:ProductSearch Id="IpMidiRetailProductSearch"
+                        UpgradeCode="$(var.IpMidiRetailMsiUpgradeCode)"
+                        Variable="IpMidiRetailProductState"
+                        Result="state" />
+    <bal:Condition Message="The Retail edition of ipMIDI Ethernet Ports for MIDI Services is already installed. Uninstall it before installing the Trial edition."
+                   Condition="WixBundleInstalled OR NOT (IpMidiRetailProductState = 5)" />
+    <?else?>
+    <RelatedBundle Id="$(var.IpMidiTrialBundleUpgradeCode)" Action="upgrade" />
+    <?endif?>
 
-    <Bundle Name="$(var.IpMidiBundleName)"
-            Manufacturer="nerds.de"
-            Version="$(var.IpMidiBundleVersion)"
-            UpgradeCode="$(var.IpMidiBundleUpgradeCode)">
+    <Variable Name="DevModeEnabled" Type="numeric" Value="0" />
+    <Variable Name="VCRuntimeInstalled" Type="numeric" Value="0" />
+    <Variable Name="MidiServiceExeExists" Type="numeric" Value="0" />
+    <Variable Name="MidiServiceRegistryExists" Type="numeric" Value="0" />
+    <Variable Name="MidiServiceStartType" Type="numeric" Value="4" />
+    <Variable Name="MidiServiceComRegistered" Type="numeric" Value="0" />
+    <Variable Name="Wdmaud2Midi" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi1" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi2" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi3" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi4" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi5" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi6" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi7" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi8" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi9" Type="string" Value="" />
+    <Variable Name="IpMidiOldRetail64" Type="numeric" Value="0" />
+    <Variable Name="IpMidiOldTrial64" Type="numeric" Value="0" />
+    <Variable Name="IpMidiOldRetail32" Type="numeric" Value="0" />
+    <Variable Name="IpMidiOldTrial32" Type="numeric" Value="0" />
+    <Variable Name="IpMidiOldService" Type="numeric" Value="0" />
+    <Variable Name="IpMidiConfigureFirewall" Type="numeric" Value="1" Persisted="yes" />
 
-        <?if $(var.IpMidiEdition) = Trial ?>
-        <RelatedBundle Id="$(var.IpMidiRetailBundleUpgradeCode)" Action="detect" />
-        <Variable Name="IpMidiRetailProductState" Type="numeric" Value="2" />
-        <util:ProductSearch
-            Id="IpMidiRetailProductSearch"
-            UpgradeCode="$(var.IpMidiRetailMsiUpgradeCode)"
-            Variable="IpMidiRetailProductState"
-            Result="state" />
-        <bal:Condition Message="The Retail edition of ipMIDI Ethernet Ports for MIDI Services is already installed. Uninstall it before installing the Trial edition."
-                       Condition="WixBundleInstalled OR NOT (IpMidiRetailProductState = 5)" />
-        <?else?>
-        <RelatedBundle Id="$(var.IpMidiTrialBundleUpgradeCode)" Action="upgrade" />
+    <util:RegistrySearch Id="DevModeSearch"
+                         Root="HKLM"
+                         Key="SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+                         Value="AllowDevelopmentWithoutDevLicense"
+                         Variable="DevModeEnabled"
+                         Result="value"
+                         Bitness="always64" />
+    <util:RegistrySearch Id="VCRuntimeSearch"
+                         Root="HKLM"
+                         Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+                         Value="Installed"
+                         Variable="VCRuntimeInstalled"
+                         Result="value"
+                         Bitness="always64" />
+    <util:FileSearch Id="MidiServiceExeSearch"
+                     Path="[System64Folder]midisrv.exe"
+                     Variable="MidiServiceExeExists"
+                     Result="exists" />
+    <util:RegistrySearch Id="MidiServiceRegistrySearch"
+                         Root="HKLM"
+                         Key="SYSTEM\CurrentControlSet\Services\midisrv"
+                         Value="Start"
+                         Variable="MidiServiceRegistryExists"
+                         Result="exists"
+                         Bitness="always64" />
+    <util:RegistrySearch Id="MidiServiceStartTypeSearch"
+                         Root="HKLM"
+                         Key="SYSTEM\CurrentControlSet\Services\midisrv"
+                         Value="Start"
+                         Variable="MidiServiceStartType"
+                         Result="value"
+                         Bitness="always64" />
+    <util:RegistrySearch Id="MidiServiceComSearch"
+                         Root="HKCR"
+                         Key="CLSID\{2BA15E4E-5417-4A66-85B8-2B2260EFBC84}\InProcServer32"
+                         Variable="MidiServiceComRegistered"
+                         Result="exists"
+                         Bitness="always64" />
+
+    <util:RegistrySearch Id="Wdmaud2MidiSearch" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi" Variable="Wdmaud2Midi" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi1Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi1" Variable="Wdmaud2Midi1" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi2Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi2" Variable="Wdmaud2Midi2" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi3Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi3" Variable="Wdmaud2Midi3" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi4Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi4" Variable="Wdmaud2Midi4" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi5Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi5" Variable="Wdmaud2Midi5" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi6Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi6" Variable="Wdmaud2Midi6" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi7Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi7" Variable="Wdmaud2Midi7" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi8Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi8" Variable="Wdmaud2Midi8" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi9Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi9" Variable="Wdmaud2Midi9" Result="value" Bitness="always64" />
+
+    <util:RegistrySearch Id="IpMidiOldRetail64Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ipMIDI" Variable="IpMidiOldRetail64" Result="exists" Bitness="always64" />
+    <util:RegistrySearch Id="IpMidiOldTrial64Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ipMIDI Trial" Variable="IpMidiOldTrial64" Result="exists" Bitness="always64" />
+    <util:RegistrySearch Id="IpMidiOldRetail32Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ipMIDI" Variable="IpMidiOldRetail32" Result="exists" Bitness="always32" />
+    <util:RegistrySearch Id="IpMidiOldTrial32Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ipMIDI Trial" Variable="IpMidiOldTrial32" Result="exists" Bitness="always32" />
+    <util:RegistrySearch Id="IpMidiOldServiceSearch" Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\ipMIDI" Value="Start" Variable="IpMidiOldService" Result="exists" Bitness="always64" />
+    <util:RegistrySearch Id="IpMidiFirewallPreferenceSearch" Root="HKLM" Key="SOFTWARE\nerds.de\ipMIDI\Installer" Value="ConfigureFirewall" Variable="IpMidiConfigureFirewall" Result="value" Bitness="always64" />
+
+    <bal:Condition Message="ipMIDI Ethernet Ports for MIDI Services requires an x64 edition of Windows 11."
+                   Condition="WixBundleInstalled OR (VersionNT64 &gt;= v10.0 AND WindowsBuildNumber &gt;= 22000)" />
+
+    <bal:Condition Message="Windows MIDI Services is not available on this computer. ipMIDI Ethernet Ports for MIDI Services cannot be installed. Please install ipMIDI 1.9.3 for Windows, which uses the traditional kernel driver, instead. Setup will now exit."
+                   Condition="WixBundleInstalled OR MidiServiceExeExists OR MidiServiceRegistryExists OR MidiServiceComRegistered OR (Wdmaud2Midi ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi1 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi2 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi3 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi4 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi5 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi6 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi7 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi8 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi9 ~= &quot;wdmaud2.drv&quot;)" />
+
+    <bal:Condition Message="Windows MIDI Services is present but incomplete or disabled. Install all available Windows updates or repair Windows MIDI Services, then run this setup again."
+                   Condition="WixBundleInstalled OR NOT (MidiServiceExeExists OR MidiServiceRegistryExists OR MidiServiceComRegistered OR (Wdmaud2Midi ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi1 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi2 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi3 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi4 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi5 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi6 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi7 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi8 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi9 ~= &quot;wdmaud2.drv&quot;)) OR (MidiServiceExeExists AND MidiServiceRegistryExists AND MidiServiceStartType &lt;&gt; 4 AND MidiServiceComRegistered AND (Wdmaud2Midi ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi1 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi2 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi3 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi4 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi5 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi6 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi7 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi8 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi9 ~= &quot;wdmaud2.drv&quot;))" />
+
+    <bal:Condition Message="An older ipMIDI kernel-driver installation was detected. Uninstall 'ipMIDI - Ethernet MIDI Port' or 'ipMIDI Trial - Ethernet MIDI Port' in Settings &gt; Apps &gt; Installed apps, restart Windows, and run this setup again. The MIDI Services plugin has not been installed."
+                   Condition="WixBundleInstalled OR NOT (IpMidiOldRetail64 OR IpMidiOldTrial64 OR IpMidiOldRetail32 OR IpMidiOldTrial32 OR IpMidiOldService) OR NOT (MidiServiceExeExists AND MidiServiceRegistryExists AND MidiServiceStartType &lt;&gt; 4 AND MidiServiceComRegistered AND (Wdmaud2Midi ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi1 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi2 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi3 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi4 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi5 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi6 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi7 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi8 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi9 ~= &quot;wdmaud2.drv&quot;))" />
+
+    <?if $(var.IpMidiRequireDeveloperMode) = true ?>
+    <bal:Condition Message="Developer mode in Windows Settings must be enabled while installing this unsigned development build of ipMIDI."
+                   Condition="WixBundleInstalled OR DevModeEnabled = 1" />
+    <?endif?>
+
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication Theme="rtfLicense"
+                                              ThemeFile="IpMidiTheme.xml"
+                                              LocalizationFile="IpMidiTheme.wxl"
+                                              LicenseFile="Licence.rtf"
+                                              LogoFile="ipmidi-setup-logo.png"
+                                              SuppressOptionsUI="yes"
+                                              SuppressRepair="no"
+                                              ShowVersion="true" />
+    </BootstrapperApplication>
+
+    <Chain>
+      <PackageGroupRef Id="Prerequisites" />
+      <PackageGroupRef Id="MidiServicesPackages" />
+    </Chain>
+  </Bundle>
+
+  <Fragment>
+    <PackageGroup Id="Prerequisites">
+      <ExePackage Id="VisualCppRuntime"
+                  Vital="false"
+                  DisplayName="Microsoft Visual C++ Runtime"
+                  SourceFile="$(DependenciesSourceRootFolder)\VC_redist.x64.exe"
+                  Compressed="yes"
+                  DetectCondition="VCRuntimeInstalled = 1"
+                  InstallArguments="/install /passive /norestart /log midi_vcruntime_install_log.txt"
+                  Permanent="true" />
+    </PackageGroup>
+
+    <PackageGroup Id="MidiServicesPackages">
+      <MsiPackage Id="$(var.IpMidiMsiOutputName)"
+                  DisplayName="$(var.IpMidiBundleName)"
+                  Vital="true"
+                  Permanent="no"
+                  Visible="no"
+                  Compressed="yes"
+                  SourceFile="$(var.IpMidiMsiOutputName).msi">
+        <MsiProperty Name="IPMIDI_CONFIGURE_FIREWALL" Value="[IpMidiConfigureFirewall]" />
+        <?if $(var.IpMidiEdition) = Retail ?>
+        <MsiProperty Name="IPMIDI_BURN_CROSS_EDITION" Value="1" />
         <?endif?>
-
-        <!-- Require Dev Mode to be turned on to run this installer -->
-        <WixVariable Id="DevModeEnabled" Value="0" />
-        <util:RegistrySearch
-            Id="DevMode"
-            Root="HKLM"
-            Key="SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
-            Value="AllowDevelopmentWithoutDevLicense"
-            Variable="DevModeEnabled"
-            Result="value"/>
-
-        <bal:Condition Message="Developer mode in Windows Settings must be enabled to install ipMIDI Ethernet Ports for MIDI Services."
-                 Condition="DevModeEnabled=1" />
-
-        <WixVariable Id="WixUIDialogBmp" Value="midi_installer_logo.bmp" />
-
-        <BootstrapperApplication>
-            <bal:WixStandardBootstrapperApplication LicenseUrl=""
-                                                    Theme="hyperlinkLicense"
-                                                    SuppressOptionsUI="true"
-                                                    SuppressRepair="true"
-                                                    ShowVersion="true"
-                                                    LogoFile="midi_installer_logo_square.png"/>
-
-
-        </BootstrapperApplication>
-
-        <Chain>
-          <PackageGroupRef Id="Prerequisites" />
-          <PackageGroupRef Id="MidiServicesPackages" />
-        </Chain>
-    </Bundle>
-
-
-    <Fragment>
-      <PackageGroup Id="Prerequisites">
-
-        <!-- C++ Runtime. The x64 download contains both Arm64 and X64 versions -->
-        <ExePackage
-            Vital="false"
-            DisplayName="Microsoft Visual C++ Runtime"
-            SourceFile="$(DependenciesSourceRootFolder)\VC_redist.x64.exe"
-            Compressed="yes"
-            InstallArguments="/install /passive /norestart /log midi_vcruntime_install_log.txt"
-            Permanent="true"
-                >
-        </ExePackage>
-
-      </PackageGroup>
-
-      <PackageGroup Id="MidiServicesPackages">
-            <MsiPackage
-                Id="$(var.IpMidiMsiOutputName)"
-                Vital="true"
-                Permanent="no"
-                Visible="no"
-                Compressed="yes"
-                SourceFile="$(var.IpMidiMsiOutputName).msi">
-                <?if $(var.IpMidiEdition) = Retail ?>
-                <MsiProperty Name="IPMIDI_BURN_CROSS_EDITION" Value="1" />
-                <?endif?>
-            </MsiPackage>
-
-        </PackageGroup>
-
-    </Fragment>
+      </MsiPackage>
+    </PackageGroup>
+  </Fragment>
 </Wix>

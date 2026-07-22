@@ -1,175 +1,251 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:util='http://wixtoolset.org/schemas/v4/wxs/util'>
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
-    <?define StagingSourceRootFolder=$(var.IpMidiStagingRoot) ?>
+  <?define StagingSourceRootFolder=$(var.IpMidiStagingRoot) ?>
 
-    <Package
-          Name="$(var.IpMidiPackageName)"
-          Manufacturer="nerds.de"
-          Version="$(var.IpMidiMsiVersion)"
-          UpgradeCode="$(var.IpMidiMsiUpgradeCode)"
-          Scope="perMachine"
-          Compressed="true"
+  <Package Name="$(var.IpMidiPackageName)"
+           Manufacturer="nerds.de"
+           Version="$(var.IpMidiMsiVersion)"
+           UpgradeCode="$(var.IpMidiMsiUpgradeCode)"
+           Scope="perMachine"
+           Compressed="true">
 
-          >
+    <MediaTemplate EmbedCab="yes" />
 
-        <MediaTemplate EmbedCab="yes" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of ipMIDI Ethernet Ports for MIDI Services is already installed." />
 
-        <MajorUpgrade
-            DowngradeErrorMessage="A newer version of ipMIDI Ethernet Ports for MIDI Services is already installed." />
+    <?if $(var.IpMidiEdition) = Trial ?>
+    <Upgrade Id="$(var.IpMidiRetailMsiUpgradeCode)">
+      <UpgradeVersion Minimum="0.0.0"
+                      IncludeMinimum="yes"
+                      OnlyDetect="yes"
+                      Property="IPMIDI_RETAIL_EDITION_FOUND" />
+    </Upgrade>
+    <Launch Condition="Installed OR NOT IPMIDI_RETAIL_EDITION_FOUND"
+            Message="The Retail edition of ipMIDI Ethernet Ports for MIDI Services is already installed. Uninstall it, then use setupipmiditrial.exe to install the Trial edition." />
+    <?else?>
+    <Property Id="IPMIDI_BURN_CROSS_EDITION" Secure="yes" />
+    <Upgrade Id="$(var.IpMidiTrialMsiUpgradeCode)">
+      <UpgradeVersion Minimum="0.0.0"
+                      IncludeMinimum="yes"
+                      Property="IPMIDI_TRIAL_EDITION_FOUND" />
+    </Upgrade>
+    <Launch Condition="Installed OR NOT IPMIDI_TRIAL_EDITION_FOUND OR IPMIDI_BURN_CROSS_EDITION = 1"
+            Message="The Trial edition of ipMIDI Ethernet Ports for MIDI Services is installed. Use setupipmidi.exe to replace it with the Retail edition." />
+    <?endif?>
 
-        <?if $(var.IpMidiEdition) = Trial ?>
-        <Upgrade Id="$(var.IpMidiRetailMsiUpgradeCode)">
-            <UpgradeVersion Minimum="0.0.0"
-                            IncludeMinimum="yes"
-                            OnlyDetect="yes"
-                            Property="IPMIDI_RETAIL_EDITION_FOUND" />
-        </Upgrade>
-        <Launch Condition="Installed OR NOT IPMIDI_RETAIL_EDITION_FOUND"
-                Message="The Retail edition of ipMIDI Ethernet Ports for MIDI Services is already installed. Uninstall it, then use ipMIDITrialSetup.exe to install the Trial edition." />
-        <?else?>
-        <Property Id="IPMIDI_BURN_CROSS_EDITION" Secure="yes" />
-        <Upgrade Id="$(var.IpMidiTrialMsiUpgradeCode)">
-            <UpgradeVersion Minimum="0.0.0"
-                            IncludeMinimum="yes"
-                            Property="IPMIDI_TRIAL_EDITION_FOUND" />
-        </Upgrade>
-        <Launch Condition="Installed OR NOT IPMIDI_TRIAL_EDITION_FOUND OR IPMIDI_BURN_CROSS_EDITION = 1"
-                Message="The Trial edition of ipMIDI Ethernet Ports for MIDI Services is installed. Use ipMIDISetup.exe to replace it with the Retail edition." />
-        <?endif?>
+    <Launch Condition="Installed OR IPMIDI_OS_SUPPORTED = 1"
+            Message="ipMIDI Ethernet Ports for MIDI Services requires an x64 edition of Windows 11." />
+    <Launch Condition="Installed OR IPMIDI_SERVICE_ABSENT &lt;&gt; 1"
+            Message="Windows MIDI Services is not available on this computer. ipMIDI Ethernet Ports for MIDI Services cannot be installed. Please install ipMIDI 1.9.3 for Windows, which uses the traditional kernel driver, instead. Setup will now exit." />
+    <Launch Condition="Installed OR IPMIDI_SERVICE_INCOMPLETE &lt;&gt; 1"
+            Message="Windows MIDI Services is present but incomplete or disabled. Install all available Windows updates or repair Windows MIDI Services, then run this setup again." />
+    <Launch Condition="Installed OR IPMIDI_OLD_DRIVER_FOUND &lt;&gt; 1"
+            Message="An older ipMIDI kernel-driver installation was detected. Uninstall 'ipMIDI - Ethernet MIDI Port' or 'ipMIDI Trial - Ethernet MIDI Port' in Settings &gt; Apps &gt; Installed apps, restart Windows, and run this setup again. The MIDI Services plugin has not been installed." />
 
+    <Icon Id="IpMidiProductIcon" SourceFile="$(var.IpMidiInstallerIcon)" />
+    <Property Id="ARPPRODUCTICON" Value="IpMidiProductIcon" />
+    <Property Id="ARPSYSTEMCOMPONENT" Value="1" />
+    <Property Id="ARPHELPLINK" Value="https://nerds.de" />
+    <Property Id="WixUnelevatedShellExecTarget" Value="[#IpMidiMonitorExe]" />
 
-        <StandardDirectory Id="ProgramFiles64Folder">
-            <Directory Id="ROOTINSTALLFOLDER" Name="Windows MIDI Services">
-                <Directory Id="SERVICE_INSTALLFOLDER" Name="Service" />
-            </Directory>
-        </StandardDirectory>
+    <Property Id="IPMIDI_CONFIGURE_FIREWALL" Value="1" Secure="yes">
+      <RegistrySearch Id="IpMidiFirewallPreferenceSearch"
+                      Root="HKLM"
+                      Key="SOFTWARE\nerds.de\ipMIDI\Installer"
+                      Name="ConfigureFirewall"
+                      Type="raw"
+                      Bitness="always64" />
+    </Property>
 
-        <!-- Transport and other Service Plugins -->
-        <!-- Setting the SelfRegCost attribute to any positive number causes DLL Self Registration -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="WINDOWS_MIDI_ROOT" Name="Windows MIDI Services">
+        <Directory Id="SERVICE_INSTALLFOLDER" Name="Service" />
+      </Directory>
+      <Directory Id="IPMIDI_VENDOR_FOLDER" Name="nerds.de">
+        <Directory Id="IPMIDI_INSTALLFOLDER" Name="ipMIDI" />
+      </Directory>
+    </StandardDirectory>
 
-        <Component Id="WindowsServicePlugins"
-                   Bitness="always64"
-                   Directory="SERVICE_INSTALLFOLDER"
-                   Guid="$(var.IpMidiServicePluginsComponentGuid)"  >
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="IPMIDI_PROGRAMMENUFOLDER" Name="ipMIDI Ethernet Ports for MIDI Services" />
+    </StandardDirectory>
 
-            <File Source="$(StagingSourceRootFolder)\api\$(var.Platform)\Midi2.IpMidiTransport.dll" SelfRegCost="1" Vital="true" />
-            <File Source="$(StagingSourceRootFolder)\api\$(var.Platform)\Midi2.IpMidiTransport.pdb" />
-        </Component>
+    <StandardDirectory Id="StartupFolder" />
 
+    <Component Id="WindowsServicePlugins"
+               Bitness="always64"
+               Directory="IPMIDI_INSTALLFOLDER"
+               Guid="$(var.IpMidiServicePluginsComponentGuid)">
+      <File Id="IpMidiTransportDll"
+            Source="$(StagingSourceRootFolder)\api\$(var.Platform)\Midi2.IpMidiTransport.dll"
+            SelfRegCost="1"
+            Vital="true"
+            KeyPath="yes" />
+    </Component>
 
-        <Component Id="ConfigurationRegistryEntries"
-                Bitness="always64"
-                Directory="SERVICE_INSTALLFOLDER"
-                Guid="$(var.IpMidiConfigurationComponentGuid)"
-                NeverOverwrite="false">
+    <Component Id="ConfigurationRegistryEntries"
+               Bitness="always64"
+               Directory="SERVICE_INSTALLFOLDER"
+               Guid="$(var.IpMidiConfigurationComponentGuid)"
+               NeverOverwrite="false">
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows MIDI Services">
+        <RegistryKey Key="Endpoint Processing Plugins" />
+        <RegistryKey Key="Transport Plugins">
+          <RegistryKey Key="Midi2IpMidiTransport">
+            <RegistryValue Type="string" Name="CLSID" Value="{4F4E3D10-2768-429A-92F0-AAA0E8E2AC5E}">
+              <util:PermissionEx Read="yes" User="Everyone" />
+              <util:PermissionEx GenericAll="yes" User="AuthenticatedUser" />
+            </RegistryValue>
+            <RegistryValue Type="integer" Name="Enabled" Value="1">
+              <util:PermissionEx Read="yes" User="Everyone" />
+              <util:PermissionEx GenericAll="yes" User="AuthenticatedUser" />
+            </RegistryValue>
+          </RegistryKey>
+        </RegistryKey>
+      </RegistryKey>
+    </Component>
 
-            <RegistryKey Root="HKLM"
-                         Key="SOFTWARE\Microsoft\Windows MIDI Services">
+    <Component Id="RestartService"
+               Bitness="always64"
+               Directory="SERVICE_INSTALLFOLDER"
+               Guid="$(var.IpMidiRestartServiceComponentGuid)">
+      <ServiceControl Id="midisrv" Name="midisrv" Start="both" Stop="both" />
+    </Component>
 
-                <RegistryKey Key="Endpoint Processing Plugins">
-                    <!-- TODO: Any processing plugins -->
-                </RegistryKey>
+    <Component Id="IpMidiApplication"
+               Bitness="always64"
+               Directory="IPMIDI_INSTALLFOLDER"
+               Guid="$(var.IpMidiApplicationComponentGuid)">
+      <File Id="IpMidiMonitorExe"
+            Source="$(var.IpMidiMonOutputRoot)\$(var.IpMidiMonConfiguration)\IPMidiMon.exe"
+            KeyPath="yes" />
+      <File Id="IpMidiHelpFile"
+            Source="$(var.IpMidiMonOutputRoot)\$(var.IpMidiMonConfiguration)\IPMidiMon.chm" />
+      <File Id="IpMidiLicenseFile"
+            Name="Licence.txt"
+            Source="$(var.IpMidiMonRoot)\hlp\Licence.txt" />
 
-                <RegistryKey Key="Transport Plugins">
+      <Shortcut Id="IpMidiMonitorStartMenuShortcut"
+                Directory="IPMIDI_PROGRAMMENUFOLDER"
+                Name="ipMIDI Monitor"
+                Description="Configure ipMIDI Ethernet Ports"
+                Target="[#IpMidiMonitorExe]"
+                WorkingDirectory="IPMIDI_INSTALLFOLDER"
+                Icon="IpMidiProductIcon" />
+      <Shortcut Id="IpMidiHelpStartMenuShortcut"
+                Directory="IPMIDI_PROGRAMMENUFOLDER"
+                Name="ipMIDI Help"
+                Description="ipMIDI documentation"
+                Target="[#IpMidiHelpFile]"
+                WorkingDirectory="IPMIDI_INSTALLFOLDER"
+                Icon="IpMidiProductIcon" />
+      <Shortcut Id="IpMidiUninstallStartMenuShortcut"
+                Directory="IPMIDI_PROGRAMMENUFOLDER"
+                Name="Uninstall ipMIDI"
+                Description="Open Installed Apps to uninstall ipMIDI"
+                Target="[SystemFolder]control.exe"
+                Arguments="appwiz.cpl"
+                Icon="IpMidiProductIcon" />
+      <Shortcut Id="IpMidiMonitorStartupShortcut"
+                Directory="StartupFolder"
+                Name="ipMIDI Monitor"
+                Description="Start ipMIDI Monitor after sign-in"
+                Target="[#IpMidiMonitorExe]"
+                WorkingDirectory="IPMIDI_INSTALLFOLDER"
+                Icon="IpMidiProductIcon" />
 
-                  <!-- Permissions users: Everyone, Administrators, LocalSystem, LocalService, NetworkService, AuthenticatedUser, Guests, CREATOR OWNER, INTERACTIVE, and Users -->
+      <RemoveFolder Id="RemoveIpMidiProgramMenuFolder"
+                    Directory="IPMIDI_PROGRAMMENUFOLDER"
+                    On="uninstall" />
+    </Component>
 
-                    <RegistryKey Key="Midi2IpMidiTransport">
-                        <RegistryValue Type="string" Name="CLSID" Value="{4F4E3D10-2768-429A-92F0-AAA0E8E2AC5E}">
-                          <util:PermissionEx Read="yes" User="Everyone"/>
-                          <util:PermissionEx GenericAll="yes" User="AuthenticatedUser"/>
-                        </RegistryValue>
-                        <RegistryValue Type="integer" Name="Enabled" Value="1">
-                          <util:PermissionEx Read="yes" User="Everyone"/>
-                          <util:PermissionEx GenericAll="yes" User="AuthenticatedUser"/>
-                        </RegistryValue>
-                    </RegistryKey>
+    <Feature Id="WindowsMIDIServices" Title="ipMIDI Ethernet Ports for MIDI Services">
+      <ComponentRef Id="WindowsServicePlugins" />
+      <ComponentRef Id="ConfigurationRegistryEntries" />
+      <ComponentRef Id="RestartService" />
+      <ComponentRef Id="IpMidiApplication" />
+    </Feature>
 
+    <Binary Id="CustomActionBinary"
+            SourceFile="$(var.customactions.TargetDir)$(var.customactions.TargetName).CA.dll" />
 
-                </RegistryKey>
-            </RegistryKey>
-        </Component>
+    <CustomAction Id="Action_CheckIpMidiPrerequisites"
+                  Execute="immediate"
+                  BinaryRef="CustomActionBinary"
+                  DllEntry="CheckIpMidiPrerequisites"
+                  Return="check" />
+    <CustomAction Id="Action_TakeRegistryOwnership"
+                  Impersonate="no"
+                  Execute="deferred"
+                  BinaryRef="CustomActionBinary"
+                  DllEntry="TakeRegistryOwnership"
+                  Return="check" />
+    <CustomAction Id="Action_ConfigureMidiServiceForIpMidi"
+                  Impersonate="no"
+                  Execute="deferred"
+                  BinaryRef="CustomActionBinary"
+                  DllEntry="ConfigureMidiServiceForIpMidi"
+                  Return="check" />
+    <CustomAction Id="Action_SetIpMidiFirewallData"
+                  Property="Action_ConfigureIpMidiFirewallRules"
+                  Value="ConfigureFirewall=[IPMIDI_CONFIGURE_FIREWALL]" />
+    <CustomAction Id="Action_ConfigureIpMidiFirewallRules"
+                  Impersonate="no"
+                  Execute="deferred"
+                  BinaryRef="CustomActionBinary"
+                  DllEntry="ConfigureIpMidiFirewallRules"
+                  Return="check" />
+    <CustomAction Id="Action_InitializeIpMidiRegistryValues"
+                  Impersonate="no"
+                  Execute="deferred"
+                  BinaryRef="CustomActionBinary"
+                  DllEntry="InitializeIpMidiRegistryValues"
+                  Return="check" />
+    <CustomAction Id="Action_RemoveIpMidiFirewallRules"
+                  Impersonate="no"
+                  Execute="deferred"
+                  BinaryRef="CustomActionBinary"
+                  DllEntry="RemoveIpMidiFirewallRules"
+                  Return="ignore" />
+    <CustomAction Id="Action_LaunchIpMidiMon"
+                  Execute="immediate"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixUnelevatedShellExec"
+                  Return="ignore" />
 
-      <Component Id="RestartService"
-                  Bitness="always64"
-                  Directory="SERVICE_INSTALLFOLDER"
-                  Guid="$(var.IpMidiRestartServiceComponentGuid)">
+    <InstallUISequence>
+      <Custom Action="Action_CheckIpMidiPrerequisites"
+              Before="LaunchConditions"
+              Condition="NOT Installed AND NOT (REMOVE = &quot;ALL&quot;)" />
+    </InstallUISequence>
 
-        <ServiceControl Id="midisrv" Name="midisrv"
-                        Start="both"
-                        Stop="both"/>
+    <InstallExecuteSequence>
+      <Custom Action="Action_CheckIpMidiPrerequisites"
+              Before="LaunchConditions"
+              Condition="NOT Installed AND NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="Action_TakeRegistryOwnership"
+              Before="CreateFolders"
+              Condition="(NOT Installed) AND NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="Action_ConfigureMidiServiceForIpMidi"
+              After="StopServices"
+              Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="Action_InitializeIpMidiRegistryValues"
+              After="Action_ConfigureMidiServiceForIpMidi"
+              Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="Action_SetIpMidiFirewallData"
+              After="Action_InitializeIpMidiRegistryValues"
+              Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="Action_ConfigureIpMidiFirewallRules"
+              After="Action_SetIpMidiFirewallData"
+              Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="Action_RemoveIpMidiFirewallRules"
+              Before="RemoveFiles"
+              Condition="REMOVE = &quot;ALL&quot;" />
+      <Custom Action="Action_LaunchIpMidiMon"
+              After="InstallFinalize"
+              Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+    </InstallExecuteSequence>
 
-      </Component>
-
-
-      <Feature Id="WindowsMIDIServices">
-        <ComponentRef Id="WindowsServicePlugins"/>
-        <ComponentRef Id="ConfigurationRegistryEntries"/>
-        <ComponentRef Id="RestartService"/>
-      </Feature>
-
-
-      <Binary Id="CustomActionBinary"
-              SourceFile="$(var.customactions.TargetDir)$(var.customactions.TargetName).CA.dll" />
-
-      <CustomAction Id="Action_TakeRegistryOwnership"
-                    Impersonate="no"
-                    Execute="deferred"
-                    BinaryRef="CustomActionBinary"
-                    DllEntry="TakeRegistryOwnership"
-                    Return="check"/>
-
-      <CustomAction Id="Action_ConfigureMidiServiceForIpMidi"
-                    Impersonate="no"
-                    Execute="deferred"
-                    BinaryRef="CustomActionBinary"
-                    DllEntry="ConfigureMidiServiceForIpMidi"
-                    Return="check"/>
-
-      <CustomAction Id="Action_ConfigureIpMidiFirewallRules"
-                    Impersonate="no"
-                    Execute="deferred"
-                    BinaryRef="CustomActionBinary"
-                    DllEntry="ConfigureIpMidiFirewallRules"
-                    Return="check"/>
-
-      <CustomAction Id="Action_InitializeIpMidiRegistryValues"
-                    Impersonate="no"
-                    Execute="deferred"
-                    BinaryRef="CustomActionBinary"
-                    DllEntry="InitializeIpMidiRegistryValues"
-                    Return="check"/>
-
-      <CustomAction Id="Action_RemoveIpMidiFirewallRules"
-                    Impersonate="no"
-                    Execute="deferred"
-                    BinaryRef="CustomActionBinary"
-                    DllEntry="RemoveIpMidiFirewallRules"
-                    Return="ignore"/>
-
-      <InstallExecuteSequence>
-        <Custom Action="Action_TakeRegistryOwnership"
-                Before="CreateFolders"
-                Condition='(NOT Installed) AND NOT (REMOVE="ALL")' />
-
-        <Custom Action="Action_ConfigureMidiServiceForIpMidi"
-                After="StopServices"
-                Condition='NOT (REMOVE="ALL")' />
-
-        <Custom Action="Action_ConfigureIpMidiFirewallRules"
-                After="Action_InitializeIpMidiRegistryValues"
-                Condition='NOT (REMOVE="ALL")' />
-
-        <Custom Action="Action_InitializeIpMidiRegistryValues"
-                After="Action_ConfigureMidiServiceForIpMidi"
-                Condition='NOT (REMOVE="ALL")' />
-
-        <Custom Action="Action_RemoveIpMidiFirewallRules"
-                Before="RemoveFiles"
-                Condition='REMOVE="ALL"' />
-
-      </InstallExecuteSequence>
-
-    </Package>
+  </Package>
 </Wix>

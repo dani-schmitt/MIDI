@@ -1,7 +1,7 @@
 <Project Sdk="WixToolset.Sdk/4.0.2">
   <PropertyGroup>
     <IpMidiEdition Condition="'$(IpMidiEdition)' == ''">Retail</IpMidiEdition>
-    <IpMidiMsiVersion>1.0.20.0</IpMidiMsiVersion>
+    <IpMidiMsiVersion>2.0.1</IpMidiMsiVersion>
     <IpMidiRetailMsiUpgradeCode>eab8a399-74da-4542-a69b-1d8be52a83b8</IpMidiRetailMsiUpgradeCode>
     <IpMidiTrialMsiUpgradeCode>f8495e78-7768-4e5a-b997-98f5c13102ab</IpMidiTrialMsiUpgradeCode>
 
@@ -19,11 +19,18 @@
     <IpMidiConfigurationComponentGuid Condition="'$(IpMidiEdition)' == 'Trial'">bfc4e3b2-d458-465a-822b-eea8e317f7fa</IpMidiConfigurationComponentGuid>
     <IpMidiRestartServiceComponentGuid Condition="'$(IpMidiEdition)' == 'Retail'">f165f8d3-c093-4bcc-b59a-389babea54f8</IpMidiRestartServiceComponentGuid>
     <IpMidiRestartServiceComponentGuid Condition="'$(IpMidiEdition)' == 'Trial'">f14dfd4a-917b-417c-acf4-d0e5a64734b2</IpMidiRestartServiceComponentGuid>
+    <IpMidiApplicationComponentGuid Condition="'$(IpMidiEdition)' == 'Retail'">6da0905a-99b8-41e5-b69d-9b0309499e64</IpMidiApplicationComponentGuid>
+    <IpMidiApplicationComponentGuid Condition="'$(IpMidiEdition)' == 'Trial'">6caed12e-2cae-4882-957c-a2ad6ba873aa</IpMidiApplicationComponentGuid>
 
     <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Retail'">$(MIDI_REPO_ROOT)build\staging</IpMidiStagingRoot>
     <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Trial'">$(MIDI_REPO_ROOT)build\staging\ipmidi-trial</IpMidiStagingRoot>
+    <IpMidiMonRoot Condition="'$(IpMidiMonRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\midi2\IPMidiMon</IpMidiMonRoot>
+    <IpMidiMonOutputRoot Condition="'$(IpMidiMonOutputRoot)' == ''">$(IpMidiMonRoot)\..\x64</IpMidiMonOutputRoot>
+    <IpMidiMonConfiguration Condition="'$(IpMidiEdition)' == 'Retail'">Release</IpMidiMonConfiguration>
+    <IpMidiMonConfiguration Condition="'$(IpMidiEdition)' == 'Trial'">Release_Demo</IpMidiMonConfiguration>
+    <IpMidiInstallerIcon>$(MSBuildThisFileDirectory)..\main-bundle\ipmidi.ico</IpMidiInstallerIcon>
 
-    <DefineConstants>$(DefineConstants);IpMidiEdition=$(IpMidiEdition);IpMidiMsiVersion=$(IpMidiMsiVersion);IpMidiPackageName=$(IpMidiPackageName);IpMidiMsiUpgradeCode=$(IpMidiMsiUpgradeCode);IpMidiRetailMsiUpgradeCode=$(IpMidiRetailMsiUpgradeCode);IpMidiTrialMsiUpgradeCode=$(IpMidiTrialMsiUpgradeCode);IpMidiServicePluginsComponentGuid=$(IpMidiServicePluginsComponentGuid);IpMidiConfigurationComponentGuid=$(IpMidiConfigurationComponentGuid);IpMidiRestartServiceComponentGuid=$(IpMidiRestartServiceComponentGuid);IpMidiStagingRoot=$(IpMidiStagingRoot)</DefineConstants>
+    <DefineConstants>$(DefineConstants);IpMidiEdition=$(IpMidiEdition);IpMidiMsiVersion=$(IpMidiMsiVersion);IpMidiPackageName=$(IpMidiPackageName);IpMidiMsiUpgradeCode=$(IpMidiMsiUpgradeCode);IpMidiRetailMsiUpgradeCode=$(IpMidiRetailMsiUpgradeCode);IpMidiTrialMsiUpgradeCode=$(IpMidiTrialMsiUpgradeCode);IpMidiServicePluginsComponentGuid=$(IpMidiServicePluginsComponentGuid);IpMidiConfigurationComponentGuid=$(IpMidiConfigurationComponentGuid);IpMidiRestartServiceComponentGuid=$(IpMidiRestartServiceComponentGuid);IpMidiApplicationComponentGuid=$(IpMidiApplicationComponentGuid);IpMidiStagingRoot=$(IpMidiStagingRoot);IpMidiMonRoot=$(IpMidiMonRoot);IpMidiMonOutputRoot=$(IpMidiMonOutputRoot);IpMidiMonConfiguration=$(IpMidiMonConfiguration);IpMidiInstallerIcon=$(IpMidiInstallerIcon)</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(IpMidiEdition)' == 'Trial'">
     <OutputPath>bin\$(Platform)\$(Configuration)\Trial\</OutputPath>
@@ -46,5 +53,15 @@
   <Target Name="ValidateIpMidiEdition" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(IpMidiEdition)' != 'Retail' and '$(IpMidiEdition)' != 'Trial'"
            Text="IpMidiEdition must be either Retail or Trial." />
+  </Target>
+  <Target Name="ValidateIpMidiPayload" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(IpMidiStagingRoot)\api\$(Platform)\Midi2.IpMidiTransport.dll')"
+           Text="The $(IpMidiEdition) transport DLL was not found under $(IpMidiStagingRoot)\api\$(Platform). Build and stage it before building the installer." />
+    <Error Condition="!Exists('$(IpMidiMonOutputRoot)\$(IpMidiMonConfiguration)\IPMidiMon.exe')"
+           Text="The $(IpMidiMonConfiguration)|x64 IPMidiMon executable was not found. Build IPMidiMon before building the installer." />
+    <Error Condition="!Exists('$(IpMidiMonOutputRoot)\$(IpMidiMonConfiguration)\IPMidiMon.chm')"
+           Text="The compiled IPMidiMon help file was not found." />
+    <Error Condition="!Exists('$(IpMidiInstallerIcon)')"
+           Text="The ipMIDI installer icon was not found." />
   </Target>
 </Project>
