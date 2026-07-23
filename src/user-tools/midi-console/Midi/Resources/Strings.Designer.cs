@@ -1026,6 +1026,15 @@ namespace Microsoft.Midi.ConsoleApp.Resources {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to MIDI Monitor.
+        /// </summary>
+        internal static string MonitorConsoleTitleSuffix {
+            get {
+                return ResourceManager.GetString("MonitorConsoleTitleSuffix", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Timestamp.
         /// </summary>
         internal static string MonitorEndpointResultTableColumnHeaderTimestamp {
@@ -2494,6 +2503,33 @@ namespace Microsoft.Midi.ConsoleApp.Resources {
         internal static string PropertyTablePropertyLabelDeviceIdentityLastUpdated {
             get {
                 return ResourceManager.GetString("PropertyTablePropertyLabelDeviceIdentityLastUpdated", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Driver Inf.
+        /// </summary>
+        internal static string PropertyTablePropertyLabelDriverInfPath {
+            get {
+                return ResourceManager.GetString("PropertyTablePropertyLabelDriverInfPath", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Driver Provider.
+        /// </summary>
+        internal static string PropertyTablePropertyLabelDriverProvider {
+            get {
+                return ResourceManager.GetString("PropertyTablePropertyLabelDriverProvider", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Driver Version.
+        /// </summary>
+        internal static string PropertyTablePropertyLabelDriverVersion {
+            get {
+                return ResourceManager.GetString("PropertyTablePropertyLabelDriverVersion", resourceCulture);
             }
         }
         
