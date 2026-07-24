@@ -11,6 +11,7 @@
            Compressed="true">
 
     <MediaTemplate EmbedCab="yes" />
+    <util:QueryNativeMachine />
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of ipMIDI Ethernet Ports for MIDI Services is already installed." />
 
@@ -31,11 +32,13 @@
                       Property="IPMIDI_TRIAL_EDITION_FOUND" />
     </Upgrade>
     <Launch Condition="Installed OR NOT IPMIDI_TRIAL_EDITION_FOUND OR IPMIDI_BURN_CROSS_EDITION = 1"
-            Message="The Trial edition of ipMIDI Ethernet Ports for MIDI Services is installed. Use setupipmidi.exe to replace it with the Retail edition." />
+            Message="The Trial edition of ipMIDI Ethernet Ports for MIDI Services is installed. Use $(var.IpMidiRetailSetupFileName) to replace it with the Retail edition." />
     <?endif?>
 
+    <Launch Condition="Installed OR WIX_NATIVE_MACHINE = $(var.IpMidiNativeMachine)"
+            Message="This installer requires a native $(var.IpMidiArchitectureName) Windows computer. Run the installer matching this computer's architecture." />
     <Launch Condition="Installed OR IPMIDI_OS_SUPPORTED = 1"
-            Message="ipMIDI Ethernet Ports for MIDI Services requires an x64 edition of Windows 11." />
+            Message="ipMIDI Ethernet Ports for MIDI Services requires Windows 11." />
     <Launch Condition="Installed OR IPMIDI_SERVICE_ABSENT &lt;&gt; 1"
             Message="Windows MIDI Services is not available on this computer. ipMIDI Ethernet Ports for MIDI Services cannot be installed. Please install ipMIDI 1.9.3 for Windows, which uses the traditional kernel driver, instead. Setup will now exit." />
     <Launch Condition="Installed OR IPMIDI_SERVICE_INCOMPLETE &lt;&gt; 1"
@@ -48,6 +51,8 @@
     <Property Id="ARPSYSTEMCOMPONENT" Value="1" />
     <Property Id="ARPHELPLINK" Value="https://nerds.de" />
     <Property Id="WixUnelevatedShellExecTarget" Value="[#IpMidiMonitorExe]" />
+    <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
+    <Property Id="MSIDISABLERMRESTART" Value="1" />
 
     <util:CloseApplication Id="CloseIpMidiMonitor"
                            Target="IPMidiMon.exe"
@@ -234,7 +239,7 @@
               Before="LaunchConditions"
               Condition="NOT Installed AND NOT (REMOVE = &quot;ALL&quot;)" />
       <Custom Action="Wix4CloseApplications_$(sys.BUILDARCHSHORT)"
-              Before="InstallValidate"
+              After="InstallInitialize"
               Condition="VersionNT &gt; 400" />
       <Custom Action="Action_TakeRegistryOwnership"
               Before="CreateFolders"

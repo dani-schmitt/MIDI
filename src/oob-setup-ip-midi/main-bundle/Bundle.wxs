@@ -57,7 +57,7 @@
                          Bitness="always64" />
     <util:RegistrySearch Id="VCRuntimeSearch"
                          Root="HKLM"
-                         Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+                         Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\$(var.IpMidiVCRuntimeArchitecture)"
                          Value="Installed"
                          Variable="VCRuntimeInstalled"
                          Result="value"
@@ -105,7 +105,10 @@
     <util:RegistrySearch Id="IpMidiOldServiceSearch" Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\ipMIDI" Value="Start" Variable="IpMidiOldService" Result="exists" Bitness="always64" />
     <util:RegistrySearch Id="IpMidiFirewallPreferenceSearch" Root="HKLM" Key="SOFTWARE\nerds.de\ipMIDI\Installer" Value="ConfigureFirewall" Variable="IpMidiConfigureFirewall" Result="value" Bitness="always64" />
 
-    <bal:Condition Message="ipMIDI Ethernet Ports for MIDI Services requires an x64 edition of Windows 11."
+    <bal:Condition Message="This installer requires a native $(var.IpMidiArchitectureName) Windows computer. Run the installer matching this computer's architecture."
+                   Condition="WixBundleInstalled OR NativeMachine = $(var.IpMidiNativeMachine)" />
+
+    <bal:Condition Message="ipMIDI Ethernet Ports for MIDI Services requires Windows 11."
                    Condition="WixBundleInstalled OR (VersionNT64 &gt;= v10.0 AND WindowsBuildNumber &gt;= 22000)" />
 
     <bal:Condition Message="Windows MIDI Services is not available on this computer. ipMIDI Ethernet Ports for MIDI Services cannot be installed. Please install ipMIDI 1.9.3 for Windows, which uses the traditional kernel driver, instead. Setup will now exit."
@@ -152,7 +155,7 @@
     </PackageGroup>
 
     <PackageGroup Id="MidiServicesPackages">
-      <MsiPackage Id="$(var.IpMidiMsiOutputName)"
+      <MsiPackage Id="$(var.IpMidiMsiPackageId)"
                   DisplayName="$(var.IpMidiBundleName)"
                   Vital="true"
                   Permanent="no"

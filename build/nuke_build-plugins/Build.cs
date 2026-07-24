@@ -123,6 +123,7 @@ class Build : NukeBuild
     AbsolutePath VirtualPatchBaySetupSolutionFolder => SourceRootFolder / "oob-setup-virtual-patch-bay";
     AbsolutePath BasicLoopbackSetupSolutionFolder => SourceRootFolder / "oob-setup-basic-loopback";
     AbsolutePath IpMidiSetupSolutionFolder => SourceRootFolder / "oob-setup-ip-midi";
+    AbsolutePath IpMidiMonSolutionFolder => NukeBuild.RootDirectory / ".." / "midi2";
 
 
     AbsolutePath ApiReferenceFolder => SourceRootFolder / "shared" / "api-ref";
@@ -587,41 +588,107 @@ class Build : NukeBuild
 
     Target T_BuildIpMidiPluginInstaller => _ => _
         .DependsOn(T_Prerequisites)
-        .DependsOn(T_BuildInDevelopmentServicePlugins)
         .Executes(() =>
         {
             foreach (var platform in InstallerPlatforms)
             {
-                UpdateSetupBundleInfoIncludeFile(platform);
-
+                var projectPlatform = platform.Equals("Arm64", StringComparison.OrdinalIgnoreCase) ? "ARM64" : platform;
+                string apiSolutionDir = ApiSolutionFolder.ToString() + @"\";
                 string solutionDir = IpMidiSetupSolutionFolder.ToString() + @"\";
 
-                var msbuildProperties = new Dictionary<string, object>();
-                msbuildProperties.Add("Platform", platform);
-                msbuildProperties.Add("SolutionDir", solutionDir);
+                foreach (var dependencyProject in new[]
+                {
+                    ApiSolutionFolder / "idl" / "IDL.vcxproj",
+                    ApiSolutionFolder / "Libs" / "MidiEndpointNamingLib" / "MidiEndpointNamingLib.vcxproj",
+                    ApiSolutionFolder / "Libs" / "MidiPluginConfigurationLib" / "MidiPluginConfigurationLib.vcxproj"
+                })
+                {
+                    MSBuildTasks.MSBuild(_ => _
+                        .SetProcessToolPath(MSBuildPath)
+                        .SetTargetPath(dependencyProject)
+                        .SetMaxCpuCount(1)
+                        .SetProperty("Platform", projectPlatform)
+                        .SetProperty("SolutionDir", apiSolutionDir)
+                        .SetProperty("WindowsTargetPlatformVersion", "10.0.26100.0")
+                        .SetConfiguration(Configuration.Release)
+                        .SetTargets("Rebuild")
+                        .SetVerbosity(BuildVerbosity)
+                        .EnableNodeReuse());
+                }
 
-                NuGetTasks.NuGetRestore(_ => _
-                    .SetProcessWorkingDirectory(solutionDir)
-                    .SetSource(@"https://api.nuget.org/v3/index.json")
-                    .SetSolutionDirectory(solutionDir)
-                );
+                foreach (var monitorConfiguration in new[] { "Release", "Release_Demo" })
+                {
+                    MSBuildTasks.MSBuild(_ => _
+                        .SetProcessToolPath(MSBuildPath)
+                        .SetTargetPath(IpMidiMonSolutionFolder / "midi2.sln")
+                        .SetMaxCpuCount(1)
+                        .SetProperty("Platform", projectPlatform)
+                        .SetProperty("WindowsTargetPlatformVersion", "10.0.26100.0")
+                        .SetConfiguration(monitorConfiguration)
+                        .SetTargets("Rebuild")
+                        .SetVerbosity(BuildVerbosity)
+                        .EnableNodeReuse());
+                }
 
-                MSBuildTasks.MSBuild(_ => _
-                    .SetProcessToolPath(MSBuildPath)
-                    .SetTargetPath(IpMidiSetupSolutionFolder / "midi-services-ip-midi-setup.sln")
-                    .SetMaxCpuCount(null)
-                    .SetProperties(msbuildProperties)
-                    .SetConfiguration(Configuration.Release)
-                    .SetTargets("Clean", "Rebuild")
-                    .SetVerbosity(BuildVerbosity)
-                    .EnableNodeReuse()
-                );
+                foreach (var edition in new[] { "Retail", "Trial" })
+                {
+                    MSBuildTasks.MSBuild(_ => _
+                        .SetProcessToolPath(MSBuildPath)
+                        .SetTargetPath(ApiSolutionFolder / "Transport" / "IpMidiTransport" / "Midi2.IpMidiTransport.vcxproj")
+                        .SetMaxCpuCount(1)
+                        .SetProperty("Platform", projectPlatform)
+                        .SetProperty("SolutionDir", apiSolutionDir)
+                        .SetProperty("WindowsTargetPlatformVersion", "10.0.26100.0")
+                        .SetProperty("IpMidiEdition", edition)
+                        .SetConfiguration(Configuration.Release)
+                        .SetTargets("Rebuild")
+                        .SetVerbosity(BuildVerbosity)
+                        .EnableNodeReuse());
 
-                string newInstallerName = $"Windows MIDI Services (ipMIDI Preview) {BuildVersionFullString}-{platform.ToLower()}.exe";
-                var setupFile = IpMidiSetupSolutionFolder / "main-bundle" / "bin" / platform / Configuration.Release / "WindowsMidiServicesIpMidiSetup.exe";
+                    var outputConfiguration = edition == "Trial" ? "Release_Trial" : "Release";
+                    var stagingFolder = edition == "Trial"
+                        ? StagingRootFolder / "ipmidi-trial" / "api" / projectPlatform
+                        : ApiStagingFolder / projectPlatform;
+                    stagingFolder.CreateDirectory();
+                    (ApiSolutionFolder / "VSFiles" / projectPlatform / outputConfiguration / "Midi2.IpMidiTransport.dll")
+                        .CopyToDirectory(stagingFolder, ExistsPolicy.FileOverwrite);
 
-                setupFile.Copy(ThisReleaseFolder / newInstallerName);
-                BuiltIpMidiInstallers[platform.ToLower()] = newInstallerName;
+                    var msbuildProperties = new Dictionary<string, object>
+                    {
+                        { "Platform", projectPlatform },
+                        { "SolutionDir", solutionDir },
+                        { "IpMidiEdition", edition }
+                    };
+
+                    NuGetTasks.NuGetRestore(_ => _
+                        .SetProcessWorkingDirectory(solutionDir)
+                        .SetSource(@"https://api.nuget.org/v3/index.json")
+                        .SetSolutionDirectory(solutionDir));
+
+                    MSBuildTasks.MSBuild(_ => _
+                        .SetProcessToolPath(MSBuildPath)
+                        .SetTargetPath(IpMidiSetupSolutionFolder / "midi-services-ip-midi-setup.sln")
+                        .SetMaxCpuCount(1)
+                        .SetProperties(msbuildProperties)
+                        .SetConfiguration(Configuration.Release)
+                        .SetTargets("Rebuild")
+                        .SetVerbosity(BuildVerbosity)
+                        .EnableNodeReuse());
+
+                    var platformSuffix = projectPlatform == "ARM64" ? "-arm64" : "";
+                    var setupFileName = edition == "Trial"
+                        ? $"setupipmiditrial{platformSuffix}.exe"
+                        : $"setupipmidi{platformSuffix}.exe";
+                    var editionFolder = edition == "Trial" ? "Trial" : "";
+                    var setupFolder = IpMidiSetupSolutionFolder / "main-bundle" / "bin" / projectPlatform / Configuration.Release;
+                    if (editionFolder.Length > 0)
+                    {
+                        setupFolder /= editionFolder;
+                    }
+
+                    (setupFolder / setupFileName).Copy(ThisReleaseFolder / setupFileName);
+                    BuiltIpMidiInstallers[$"{edition.ToLower()}-{projectPlatform.ToLower()}"] = setupFileName;
+                }
             }
         });
 

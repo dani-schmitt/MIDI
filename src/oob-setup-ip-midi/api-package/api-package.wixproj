@@ -2,11 +2,20 @@
   <PropertyGroup>
     <IpMidiEdition Condition="'$(IpMidiEdition)' == ''">Retail</IpMidiEdition>
     <IpMidiMsiVersion>2.0.1</IpMidiMsiVersion>
+    <InstallerPlatform Condition="'$(Platform)' == 'ARM64'">arm64</InstallerPlatform>
+    <InstallerPlatform Condition="'$(Platform)' != 'ARM64'">x64</InstallerPlatform>
+    <IpMidiPlatformSuffix Condition="'$(Platform)' == 'ARM64'">-arm64</IpMidiPlatformSuffix>
+    <IpMidiArchitectureName Condition="'$(Platform)' == 'ARM64'">ARM64</IpMidiArchitectureName>
+    <IpMidiArchitectureName Condition="'$(Platform)' != 'ARM64'">x64</IpMidiArchitectureName>
+    <IpMidiNativeMachine Condition="'$(Platform)' == 'ARM64'">43620</IpMidiNativeMachine>
+    <IpMidiNativeMachine Condition="'$(Platform)' != 'ARM64'">34404</IpMidiNativeMachine>
+    <IpMidiRetailSetupFileName Condition="'$(Platform)' == 'ARM64'">setupipmidi-arm64.exe</IpMidiRetailSetupFileName>
+    <IpMidiRetailSetupFileName Condition="'$(Platform)' != 'ARM64'">setupipmidi.exe</IpMidiRetailSetupFileName>
     <IpMidiRetailMsiUpgradeCode>eab8a399-74da-4542-a69b-1d8be52a83b8</IpMidiRetailMsiUpgradeCode>
     <IpMidiTrialMsiUpgradeCode>f8495e78-7768-4e5a-b997-98f5c13102ab</IpMidiTrialMsiUpgradeCode>
 
-    <OutputName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDISetup</OutputName>
-    <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDITrialSetup</OutputName>
+    <OutputName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDISetup$(IpMidiPlatformSuffix)</OutputName>
+    <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDITrialSetup$(IpMidiPlatformSuffix)</OutputName>
 
     <IpMidiPackageName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDI Ethernet Ports for MIDI Services</IpMidiPackageName>
     <IpMidiPackageName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDI Ethernet Ports for MIDI Services (Trial)</IpMidiPackageName>
@@ -21,16 +30,24 @@
     <IpMidiRestartServiceComponentGuid Condition="'$(IpMidiEdition)' == 'Trial'">f14dfd4a-917b-417c-acf4-d0e5a64734b2</IpMidiRestartServiceComponentGuid>
     <IpMidiApplicationComponentGuid Condition="'$(IpMidiEdition)' == 'Retail'">6da0905a-99b8-41e5-b69d-9b0309499e64</IpMidiApplicationComponentGuid>
     <IpMidiApplicationComponentGuid Condition="'$(IpMidiEdition)' == 'Trial'">6caed12e-2cae-4882-957c-a2ad6ba873aa</IpMidiApplicationComponentGuid>
+    <IpMidiServicePluginsComponentGuid Condition="'$(Platform)' == 'ARM64' and '$(IpMidiEdition)' == 'Retail'">b6db6578-7dba-4149-9b70-1b5a3865a07d</IpMidiServicePluginsComponentGuid>
+    <IpMidiConfigurationComponentGuid Condition="'$(Platform)' == 'ARM64' and '$(IpMidiEdition)' == 'Retail'">5647c9b3-b21a-4a47-85c3-b30b70f016f0</IpMidiConfigurationComponentGuid>
+    <IpMidiRestartServiceComponentGuid Condition="'$(Platform)' == 'ARM64' and '$(IpMidiEdition)' == 'Retail'">28ae2bd8-2697-4b08-9a0c-9fa8267b9e4e</IpMidiRestartServiceComponentGuid>
+    <IpMidiApplicationComponentGuid Condition="'$(Platform)' == 'ARM64' and '$(IpMidiEdition)' == 'Retail'">b62bb1a0-6f78-4677-9b34-14e9718d1c03</IpMidiApplicationComponentGuid>
+    <IpMidiServicePluginsComponentGuid Condition="'$(Platform)' == 'ARM64' and '$(IpMidiEdition)' == 'Trial'">6459bd66-03e8-464d-9c9a-a2269c74fb02</IpMidiServicePluginsComponentGuid>
+    <IpMidiConfigurationComponentGuid Condition="'$(Platform)' == 'ARM64' and '$(IpMidiEdition)' == 'Trial'">a23e9139-d9cb-4519-a6b5-a0d46cc444a5</IpMidiConfigurationComponentGuid>
+    <IpMidiRestartServiceComponentGuid Condition="'$(Platform)' == 'ARM64' and '$(IpMidiEdition)' == 'Trial'">3d81b6a5-7474-4b7d-ae94-9f37708c091c</IpMidiRestartServiceComponentGuid>
+    <IpMidiApplicationComponentGuid Condition="'$(Platform)' == 'ARM64' and '$(IpMidiEdition)' == 'Trial'">caf8ea4f-7ac3-4a76-801b-35583921141d</IpMidiApplicationComponentGuid>
 
     <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Retail'">$(MIDI_REPO_ROOT)build\staging</IpMidiStagingRoot>
     <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Trial'">$(MIDI_REPO_ROOT)build\staging\ipmidi-trial</IpMidiStagingRoot>
     <IpMidiMonRoot Condition="'$(IpMidiMonRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\midi2\IPMidiMon</IpMidiMonRoot>
-    <IpMidiMonOutputRoot Condition="'$(IpMidiMonOutputRoot)' == ''">$(IpMidiMonRoot)\..\x64</IpMidiMonOutputRoot>
+    <IpMidiMonOutputRoot Condition="'$(IpMidiMonOutputRoot)' == ''">$(IpMidiMonRoot)\..\$(Platform)</IpMidiMonOutputRoot>
     <IpMidiMonConfiguration Condition="'$(IpMidiEdition)' == 'Retail'">Release</IpMidiMonConfiguration>
     <IpMidiMonConfiguration Condition="'$(IpMidiEdition)' == 'Trial'">Release_Demo</IpMidiMonConfiguration>
     <IpMidiInstallerIcon>$(MSBuildThisFileDirectory)..\main-bundle\ipmidi.ico</IpMidiInstallerIcon>
 
-    <DefineConstants>$(DefineConstants);IpMidiEdition=$(IpMidiEdition);IpMidiMsiVersion=$(IpMidiMsiVersion);IpMidiPackageName=$(IpMidiPackageName);IpMidiMsiUpgradeCode=$(IpMidiMsiUpgradeCode);IpMidiRetailMsiUpgradeCode=$(IpMidiRetailMsiUpgradeCode);IpMidiTrialMsiUpgradeCode=$(IpMidiTrialMsiUpgradeCode);IpMidiServicePluginsComponentGuid=$(IpMidiServicePluginsComponentGuid);IpMidiConfigurationComponentGuid=$(IpMidiConfigurationComponentGuid);IpMidiRestartServiceComponentGuid=$(IpMidiRestartServiceComponentGuid);IpMidiApplicationComponentGuid=$(IpMidiApplicationComponentGuid);IpMidiStagingRoot=$(IpMidiStagingRoot);IpMidiMonRoot=$(IpMidiMonRoot);IpMidiMonOutputRoot=$(IpMidiMonOutputRoot);IpMidiMonConfiguration=$(IpMidiMonConfiguration);IpMidiInstallerIcon=$(IpMidiInstallerIcon)</DefineConstants>
+    <DefineConstants>$(DefineConstants);IpMidiEdition=$(IpMidiEdition);IpMidiMsiVersion=$(IpMidiMsiVersion);IpMidiPackageName=$(IpMidiPackageName);IpMidiMsiUpgradeCode=$(IpMidiMsiUpgradeCode);IpMidiRetailMsiUpgradeCode=$(IpMidiRetailMsiUpgradeCode);IpMidiTrialMsiUpgradeCode=$(IpMidiTrialMsiUpgradeCode);IpMidiServicePluginsComponentGuid=$(IpMidiServicePluginsComponentGuid);IpMidiConfigurationComponentGuid=$(IpMidiConfigurationComponentGuid);IpMidiRestartServiceComponentGuid=$(IpMidiRestartServiceComponentGuid);IpMidiApplicationComponentGuid=$(IpMidiApplicationComponentGuid);IpMidiStagingRoot=$(IpMidiStagingRoot);IpMidiMonRoot=$(IpMidiMonRoot);IpMidiMonOutputRoot=$(IpMidiMonOutputRoot);IpMidiMonConfiguration=$(IpMidiMonConfiguration);IpMidiInstallerIcon=$(IpMidiInstallerIcon);IpMidiArchitectureName=$(IpMidiArchitectureName);IpMidiNativeMachine=$(IpMidiNativeMachine);IpMidiRetailSetupFileName=$(IpMidiRetailSetupFileName)</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(IpMidiEdition)' == 'Trial'">
     <OutputPath>bin\$(Platform)\$(Configuration)\Trial\</OutputPath>
@@ -58,7 +75,7 @@
     <Error Condition="!Exists('$(IpMidiStagingRoot)\api\$(Platform)\Midi2.IpMidiTransport.dll')"
            Text="The $(IpMidiEdition) transport DLL was not found under $(IpMidiStagingRoot)\api\$(Platform). Build and stage it before building the installer." />
     <Error Condition="!Exists('$(IpMidiMonOutputRoot)\$(IpMidiMonConfiguration)\IPMidiMon.exe')"
-           Text="The $(IpMidiMonConfiguration)|x64 IPMidiMon executable was not found. Build IPMidiMon before building the installer." />
+           Text="The $(IpMidiMonConfiguration)|$(Platform) IPMidiMon executable was not found. Build IPMidiMon before building the installer." />
     <Error Condition="!Exists('$(IpMidiMonOutputRoot)\$(IpMidiMonConfiguration)\IPMidiMon.chm')"
            Text="The compiled IPMidiMon help file was not found." />
     <Error Condition="!Exists('$(IpMidiInstallerIcon)')"

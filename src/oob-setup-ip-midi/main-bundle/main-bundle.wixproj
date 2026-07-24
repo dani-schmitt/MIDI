@@ -2,8 +2,17 @@
   <PropertyGroup>
     <IpMidiEdition Condition="'$(IpMidiEdition)' == ''">Retail</IpMidiEdition>
     <OutputType>Bundle</OutputType>
-    <OutputName Condition="'$(IpMidiEdition)' == 'Retail'">setupipmidi</OutputName>
-    <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">setupipmiditrial</OutputName>
+    <InstallerPlatform Condition="'$(Platform)' == 'ARM64'">arm64</InstallerPlatform>
+    <InstallerPlatform Condition="'$(Platform)' != 'ARM64'">x64</InstallerPlatform>
+    <IpMidiPlatformSuffix Condition="'$(Platform)' == 'ARM64'">-arm64</IpMidiPlatformSuffix>
+    <IpMidiArchitectureName Condition="'$(Platform)' == 'ARM64'">ARM64</IpMidiArchitectureName>
+    <IpMidiArchitectureName Condition="'$(Platform)' != 'ARM64'">x64</IpMidiArchitectureName>
+    <IpMidiNativeMachine Condition="'$(Platform)' == 'ARM64'">43620</IpMidiNativeMachine>
+    <IpMidiNativeMachine Condition="'$(Platform)' != 'ARM64'">34404</IpMidiNativeMachine>
+    <IpMidiVCRuntimeArchitecture Condition="'$(Platform)' == 'ARM64'">arm64</IpMidiVCRuntimeArchitecture>
+    <IpMidiVCRuntimeArchitecture Condition="'$(Platform)' != 'ARM64'">x64</IpMidiVCRuntimeArchitecture>
+    <OutputName Condition="'$(IpMidiEdition)' == 'Retail'">setupipmidi$(IpMidiPlatformSuffix)</OutputName>
+    <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">setupipmiditrial$(IpMidiPlatformSuffix)</OutputName>
     <IpMidiBundleName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDI Ethernet Ports for MIDI Services</IpMidiBundleName>
     <IpMidiBundleName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDI Ethernet Ports for MIDI Services (Trial)</IpMidiBundleName>
     <IpMidiBundleVersion>2.0.1</IpMidiBundleVersion>
@@ -11,8 +20,12 @@
     <IpMidiTrialBundleUpgradeCode>f6176fc2-a1cf-43bc-8136-ed1381f5fc2a</IpMidiTrialBundleUpgradeCode>
     <IpMidiBundleUpgradeCode Condition="'$(IpMidiEdition)' == 'Retail'">$(IpMidiRetailBundleUpgradeCode)</IpMidiBundleUpgradeCode>
     <IpMidiBundleUpgradeCode Condition="'$(IpMidiEdition)' == 'Trial'">$(IpMidiTrialBundleUpgradeCode)</IpMidiBundleUpgradeCode>
-    <IpMidiMsiOutputName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDISetup</IpMidiMsiOutputName>
-    <IpMidiMsiOutputName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDITrialSetup</IpMidiMsiOutputName>
+    <IpMidiMsiOutputName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDISetup$(IpMidiPlatformSuffix)</IpMidiMsiOutputName>
+    <IpMidiMsiOutputName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDITrialSetup$(IpMidiPlatformSuffix)</IpMidiMsiOutputName>
+    <IpMidiMsiPackageId Condition="'$(IpMidiEdition)' == 'Retail' and '$(Platform)' != 'ARM64'">ipMIDISetup</IpMidiMsiPackageId>
+    <IpMidiMsiPackageId Condition="'$(IpMidiEdition)' == 'Trial' and '$(Platform)' != 'ARM64'">ipMIDITrialSetup</IpMidiMsiPackageId>
+    <IpMidiMsiPackageId Condition="'$(IpMidiEdition)' == 'Retail' and '$(Platform)' == 'ARM64'">ipMIDISetupArm64</IpMidiMsiPackageId>
+    <IpMidiMsiPackageId Condition="'$(IpMidiEdition)' == 'Trial' and '$(Platform)' == 'ARM64'">ipMIDITrialSetupArm64</IpMidiMsiPackageId>
     <IpMidiRetailMsiUpgradeCode>eab8a399-74da-4542-a69b-1d8be52a83b8</IpMidiRetailMsiUpgradeCode>
     <IpMidiTrialMsiUpgradeCode>f8495e78-7768-4e5a-b997-98f5c13102ab</IpMidiTrialMsiUpgradeCode>
     <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Retail'">$(MIDI_REPO_ROOT)build\staging</IpMidiStagingRoot>
@@ -20,7 +33,7 @@
     <IpMidiMonRoot Condition="'$(IpMidiMonRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\midi2\IPMidiMon</IpMidiMonRoot>
     <IpMidiRequireDeveloperMode Condition="'$(IpMidiRequireDeveloperMode)' == ''">true</IpMidiRequireDeveloperMode>
     <BuildDate>$([System.DateTime]::Now.ToString("yyyyMMddhhmm"))</BuildDate>
-    <DefineConstants>$(DefineConstants);BuildDate=$(BuildDate);IpMidiEdition=$(IpMidiEdition);IpMidiBundleName=$(IpMidiBundleName);IpMidiBundleVersion=$(IpMidiBundleVersion);IpMidiBundleUpgradeCode=$(IpMidiBundleUpgradeCode);IpMidiRetailBundleUpgradeCode=$(IpMidiRetailBundleUpgradeCode);IpMidiTrialBundleUpgradeCode=$(IpMidiTrialBundleUpgradeCode);IpMidiRetailMsiUpgradeCode=$(IpMidiRetailMsiUpgradeCode);IpMidiTrialMsiUpgradeCode=$(IpMidiTrialMsiUpgradeCode);IpMidiMsiOutputName=$(IpMidiMsiOutputName);IpMidiMonRoot=$(IpMidiMonRoot);IpMidiRequireDeveloperMode=$(IpMidiRequireDeveloperMode)</DefineConstants>
+    <DefineConstants>$(DefineConstants);BuildDate=$(BuildDate);IpMidiEdition=$(IpMidiEdition);IpMidiBundleName=$(IpMidiBundleName);IpMidiBundleVersion=$(IpMidiBundleVersion);IpMidiBundleUpgradeCode=$(IpMidiBundleUpgradeCode);IpMidiRetailBundleUpgradeCode=$(IpMidiRetailBundleUpgradeCode);IpMidiTrialBundleUpgradeCode=$(IpMidiTrialBundleUpgradeCode);IpMidiRetailMsiUpgradeCode=$(IpMidiRetailMsiUpgradeCode);IpMidiTrialMsiUpgradeCode=$(IpMidiTrialMsiUpgradeCode);IpMidiMsiOutputName=$(IpMidiMsiOutputName);IpMidiMsiPackageId=$(IpMidiMsiPackageId);IpMidiMonRoot=$(IpMidiMonRoot);IpMidiRequireDeveloperMode=$(IpMidiRequireDeveloperMode);IpMidiArchitectureName=$(IpMidiArchitectureName);IpMidiNativeMachine=$(IpMidiNativeMachine);IpMidiVCRuntimeArchitecture=$(IpMidiVCRuntimeArchitecture)</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(IpMidiEdition)' == 'Trial'">
     <OutputPath>bin\$(Platform)\$(Configuration)\Trial\</OutputPath>
