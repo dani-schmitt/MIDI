@@ -1,6 +1,12 @@
 <Project Sdk="WixToolset.Sdk/4.0.2">
   <PropertyGroup>
     <IpMidiEdition Condition="'$(IpMidiEdition)' == ''">Retail</IpMidiEdition>
+    <IpMidiSign Condition="'$(IpMidiSign)' == ''">false</IpMidiSign>
+    <IpMidiSigningConfirmed Condition="'$(IpMidiSigningConfirmed)' == ''">false</IpMidiSigningConfirmed>
+    <IpMidiSigningSubject Condition="'$(IpMidiSigningSubject)' == ''">Daniel Schmitt</IpMidiSigningSubject>
+    <IpMidiTimestampUrl Condition="'$(IpMidiTimestampUrl)' == ''">http://time.certum.pl</IpMidiTimestampUrl>
+    <IpMidiSigningScript Condition="'$(IpMidiSigningScript)' == ''">$(MIDI_REPO_ROOT)build\signing\Sign-IpMidiFile.ps1</IpMidiSigningScript>
+    <SignOutput Condition="'$(IpMidiSign)' == 'true'">true</SignOutput>
     <IpMidiMsiVersion>2.0.1</IpMidiMsiVersion>
     <InstallerPlatform Condition="'$(Platform)' == 'ARM64'">arm64</InstallerPlatform>
     <InstallerPlatform Condition="'$(Platform)' != 'ARM64'">x64</InstallerPlatform>
@@ -70,6 +76,17 @@
   <Target Name="ValidateIpMidiEdition" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(IpMidiEdition)' != 'Retail' and '$(IpMidiEdition)' != 'Trial'"
            Text="IpMidiEdition must be either Retail or Trial." />
+  </Target>
+  <Target Name="ValidateIpMidiSigning"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(IpMidiSign)' == 'true'">
+    <Error Condition="'$(IpMidiSigningConfirmed)' != 'true'"
+           Text="Certum SimplySign readiness must be explicitly confirmed with IpMidiSigningConfirmed=true." />
+    <Error Condition="!Exists('$(IpMidiSigningScript)')"
+           Text="The ipMIDI signing script was not found at $(IpMidiSigningScript)." />
+  </Target>
+  <Target Name="SignMsi" Condition="'$(IpMidiSign)' == 'true'">
+    <Exec Command='powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(IpMidiSigningScript)&quot; -Path &quot;%(SignMsi.FullPath)&quot; -Description &quot;$(IpMidiPackageName)&quot; -SubjectName &quot;$(IpMidiSigningSubject)&quot; -TimestampUrl &quot;$(IpMidiTimestampUrl)&quot; -ConfirmSimpleSignReady' />
   </Target>
   <Target Name="ValidateIpMidiPayload" BeforeTargets="PrepareForBuild">
     <Error Condition="!Exists('$(IpMidiStagingRoot)\api\$(Platform)\Midi2.IpMidiTransport.dll')"

@@ -29,8 +29,10 @@
         "T_BuildInDevelopmentServicePlugins",
         "T_BuildIpMidiPluginInstaller",
         "T_BuildNetworkMidiInstaller",
+        "T_BuildSignedIpMidiPluginInstaller",
         "T_BuildVirtualPatchBayPluginInstaller",
         "T_CreateVersionIncludes",
+        "T_PrepareSignedIpMidiRelease",
         "T_Prerequisites"
       ]
     },
@@ -103,7 +105,18 @@
     }
   },
   "allOf": [
-    {},
+    {
+      "properties": {
+        "ConfirmSimpleSignReady": {
+          "type": "boolean",
+          "description": "Confirms that Certum SimplySign Desktop is signed in and ready for the current release build"
+        },
+        "IpMidiSigningThumbprint": {
+          "type": "string",
+          "description": "Optional one-run certificate thumbprint when more than one valid Daniel Schmitt certificate is available"
+        }
+      }
+    },
     {
       "$ref": "#/definitions/NukeBuild"
     }

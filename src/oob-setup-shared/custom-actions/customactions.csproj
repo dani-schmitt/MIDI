@@ -2,6 +2,11 @@
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
     <Platforms>x64;ARM64</Platforms>
+    <IpMidiSign Condition="'$(IpMidiSign)' == ''">false</IpMidiSign>
+    <IpMidiSigningConfirmed Condition="'$(IpMidiSigningConfirmed)' == ''">false</IpMidiSigningConfirmed>
+    <IpMidiSigningSubject Condition="'$(IpMidiSigningSubject)' == ''">Daniel Schmitt</IpMidiSigningSubject>
+    <IpMidiTimestampUrl Condition="'$(IpMidiTimestampUrl)' == ''">http://time.certum.pl</IpMidiTimestampUrl>
+    <IpMidiSigningScript Condition="'$(IpMidiSigningScript)' == ''">$(MIDI_REPO_ROOT)build\signing\Sign-IpMidiFile.ps1</IpMidiSigningScript>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,4 +17,26 @@
     <PackageReference Include="WixToolset.Dtf.CustomAction" Version="5.0.2" />
     <PackageReference Include="WixToolset.Dtf.WindowsInstaller" Version="5.0.2" />
   </ItemGroup>
+
+  <Target Name="ValidateIpMidiSigning"
+          BeforeTargets="CoreCompile"
+          Condition="'$(IpMidiSign)' == 'true'">
+    <Error Condition="'$(IpMidiSigningConfirmed)' != 'true'"
+           Text="Certum SimplySign readiness must be explicitly confirmed with IpMidiSigningConfirmed=true." />
+    <Error Condition="!Exists('$(IpMidiSigningScript)')"
+           Text="The ipMIDI signing script was not found at $(IpMidiSigningScript)." />
+  </Target>
+
+  <Target Name="SignIpMidiManagedCustomAction"
+          BeforeTargets="PackCustomAction"
+          Condition="'$(IpMidiSign)' == 'true'">
+    <Exec Command='powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(IpMidiSigningScript)&quot; -Path &quot;$(IntermediateOutputPath)$(TargetFileName)&quot; -Description &quot;ipMIDI Installer Custom Actions&quot; -SubjectName &quot;$(IpMidiSigningSubject)&quot; -TimestampUrl &quot;$(IpMidiTimestampUrl)&quot; -ConfirmSimpleSignReady' />
+  </Target>
+
+  <Target Name="SignIpMidiPackagedCustomAction"
+          AfterTargets="PackCustomAction"
+          BeforeTargets="CopyFilesToOutputDirectory"
+          Condition="'$(IpMidiSign)' == 'true'">
+    <Exec Command='powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(IpMidiSigningScript)&quot; -Path &quot;$(IntermediateOutputPath)$(TargetName).CA$(TargetExt)&quot; -Description &quot;ipMIDI Installer Custom Actions&quot; -SubjectName &quot;$(IpMidiSigningSubject)&quot; -TimestampUrl &quot;$(IpMidiTimestampUrl)&quot; -ConfirmSimpleSignReady' />
+  </Target>
 </Project>

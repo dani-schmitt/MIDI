@@ -1,6 +1,12 @@
 <Project Sdk="WixToolset.Sdk/4.0.2">
   <PropertyGroup>
     <IpMidiEdition Condition="'$(IpMidiEdition)' == ''">Retail</IpMidiEdition>
+    <IpMidiSign Condition="'$(IpMidiSign)' == ''">false</IpMidiSign>
+    <IpMidiSigningConfirmed Condition="'$(IpMidiSigningConfirmed)' == ''">false</IpMidiSigningConfirmed>
+    <IpMidiSigningSubject Condition="'$(IpMidiSigningSubject)' == ''">Daniel Schmitt</IpMidiSigningSubject>
+    <IpMidiTimestampUrl Condition="'$(IpMidiTimestampUrl)' == ''">http://time.certum.pl</IpMidiTimestampUrl>
+    <IpMidiSigningScript Condition="'$(IpMidiSigningScript)' == ''">$(MIDI_REPO_ROOT)build\signing\Sign-IpMidiFile.ps1</IpMidiSigningScript>
+    <SignOutput Condition="'$(IpMidiSign)' == 'true'">true</SignOutput>
     <OutputType>Bundle</OutputType>
     <InstallerPlatform Condition="'$(Platform)' == 'ARM64'">arm64</InstallerPlatform>
     <InstallerPlatform Condition="'$(Platform)' != 'ARM64'">x64</InstallerPlatform>
@@ -31,6 +37,7 @@
     <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Retail'">$(MIDI_REPO_ROOT)build\staging</IpMidiStagingRoot>
     <IpMidiStagingRoot Condition="'$(IpMidiStagingRoot)' == '' and '$(IpMidiEdition)' == 'Trial'">$(MIDI_REPO_ROOT)build\staging\ipmidi-trial</IpMidiStagingRoot>
     <IpMidiMonRoot Condition="'$(IpMidiMonRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\midi2\IPMidiMon</IpMidiMonRoot>
+    <IpMidiRequireDeveloperMode Condition="'$(IpMidiRequireDeveloperMode)' == '' and '$(IpMidiSign)' == 'true'">false</IpMidiRequireDeveloperMode>
     <IpMidiRequireDeveloperMode Condition="'$(IpMidiRequireDeveloperMode)' == ''">true</IpMidiRequireDeveloperMode>
     <BuildDate>$([System.DateTime]::Now.ToString("yyyyMMddhhmm"))</BuildDate>
     <DefineConstants>$(DefineConstants);BuildDate=$(BuildDate);IpMidiEdition=$(IpMidiEdition);IpMidiBundleName=$(IpMidiBundleName);IpMidiBundleVersion=$(IpMidiBundleVersion);IpMidiBundleUpgradeCode=$(IpMidiBundleUpgradeCode);IpMidiRetailBundleUpgradeCode=$(IpMidiRetailBundleUpgradeCode);IpMidiTrialBundleUpgradeCode=$(IpMidiTrialBundleUpgradeCode);IpMidiRetailMsiUpgradeCode=$(IpMidiRetailMsiUpgradeCode);IpMidiTrialMsiUpgradeCode=$(IpMidiTrialMsiUpgradeCode);IpMidiMsiOutputName=$(IpMidiMsiOutputName);IpMidiMsiPackageId=$(IpMidiMsiPackageId);IpMidiMonRoot=$(IpMidiMonRoot);IpMidiRequireDeveloperMode=$(IpMidiRequireDeveloperMode);IpMidiArchitectureName=$(IpMidiArchitectureName);IpMidiNativeMachine=$(IpMidiNativeMachine);IpMidiVCRuntimeArchitecture=$(IpMidiVCRuntimeArchitecture)</DefineConstants>
@@ -66,6 +73,20 @@
   <Target Name="ValidateIpMidiEdition" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(IpMidiEdition)' != 'Retail' and '$(IpMidiEdition)' != 'Trial'"
            Text="IpMidiEdition must be either Retail or Trial." />
+  </Target>
+  <Target Name="ValidateIpMidiSigning"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(IpMidiSign)' == 'true'">
+    <Error Condition="'$(IpMidiSigningConfirmed)' != 'true'"
+           Text="Certum SimplySign readiness must be explicitly confirmed with IpMidiSigningConfirmed=true." />
+    <Error Condition="!Exists('$(IpMidiSigningScript)')"
+           Text="The ipMIDI signing script was not found at $(IpMidiSigningScript)." />
+  </Target>
+  <Target Name="SignBundleEngine" Condition="'$(IpMidiSign)' == 'true'">
+    <Exec Command='powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(IpMidiSigningScript)&quot; -Path &quot;%(SignBundleEngine.FullPath)&quot; -Description &quot;$(IpMidiBundleName)&quot; -SubjectName &quot;$(IpMidiSigningSubject)&quot; -TimestampUrl &quot;$(IpMidiTimestampUrl)&quot; -ConfirmSimpleSignReady' />
+  </Target>
+  <Target Name="SignBundle" Condition="'$(IpMidiSign)' == 'true'">
+    <Exec Command='powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(IpMidiSigningScript)&quot; -Path &quot;%(SignBundle.FullPath)&quot; -Description &quot;$(IpMidiBundleName)&quot; -SubjectName &quot;$(IpMidiSigningSubject)&quot; -TimestampUrl &quot;$(IpMidiTimestampUrl)&quot; -ConfirmSimpleSignReady' />
   </Target>
   <Target Name="ValidateIpMidiBundleResources" BeforeTargets="PrepareForBuild">
     <Error Condition="!Exists('$(MSBuildThisFileDirectory)IpMidiTheme.xml')" Text="The ipMIDI Burn theme is missing." />

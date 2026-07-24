@@ -26,7 +26,6 @@
     <?endif?>
 
     <Variable Name="DevModeEnabled" Type="numeric" Value="0" />
-    <Variable Name="VCRuntimeInstalled" Type="numeric" Value="0" />
     <Variable Name="MidiServiceExeExists" Type="numeric" Value="0" />
     <Variable Name="MidiServiceRegistryExists" Type="numeric" Value="0" />
     <Variable Name="MidiServiceStartType" Type="numeric" Value="4" />
@@ -53,13 +52,6 @@
                          Key="SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
                          Value="AllowDevelopmentWithoutDevLicense"
                          Variable="DevModeEnabled"
-                         Result="value"
-                         Bitness="always64" />
-    <util:RegistrySearch Id="VCRuntimeSearch"
-                         Root="HKLM"
-                         Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\$(var.IpMidiVCRuntimeArchitecture)"
-                         Value="Installed"
-                         Variable="VCRuntimeInstalled"
                          Result="value"
                          Bitness="always64" />
     <util:FileSearch Id="MidiServiceExeSearch"
@@ -145,11 +137,10 @@
   <Fragment>
     <PackageGroup Id="Prerequisites">
       <ExePackage Id="VisualCppRuntime"
-                  Vital="false"
+                  Vital="true"
                   DisplayName="Microsoft Visual C++ Runtime"
                   SourceFile="$(DependenciesSourceRootFolder)\VC_redist.x64.exe"
                   Compressed="yes"
-                  DetectCondition="VCRuntimeInstalled = 1"
                   InstallArguments="/install /passive /norestart /log midi_vcruntime_install_log.txt"
                   Permanent="true" />
     </PackageGroup>

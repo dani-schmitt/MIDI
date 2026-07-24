@@ -149,6 +149,18 @@ class Build : NukeBuild
     Dictionary<string, string> BuiltSimpleLoopbackInstallers = new Dictionary<string, string>();
     Dictionary<string, string> BuiltIpMidiInstallers = new Dictionary<string, string>();
 
+    [Parameter("Confirms that Certum SimplySign Desktop is signed in and ready for the current release build.")]
+    readonly bool ConfirmSimpleSignReady;
+
+    [Parameter("Optional one-run certificate thumbprint when more than one valid Daniel Schmitt certificate is available.")]
+    readonly string IpMidiSigningThumbprint;
+
+    const string IpMidiSigningSubject = "Daniel Schmitt";
+    const string IpMidiTimestampUrl = "http://time.certum.pl";
+
+    AbsolutePath IpMidiSigningScript => BuildRootFolder / "signing" / "Sign-IpMidiFile.ps1";
+    AbsolutePath IpMidiSigningManifestScript => BuildRootFolder / "signing" / "New-IpMidiSigningManifest.ps1";
+
 
     public static int Main () => Execute<Build>(x => x.BuildAndPublishAll);
 
@@ -172,6 +184,99 @@ class Build : NukeBuild
 
         MSBuildTasks.MSBuildPath = MSBuildPath;
     }
+
+    void RunPowerShell(params string[] arguments)
+    {
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            WorkingDirectory = NukeBuild.RootDirectory,
+            UseShellExecute = false
+        };
+
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-ExecutionPolicy");
+        startInfo.ArgumentList.Add("Bypass");
+
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = System.Diagnostics.Process.Start(startInfo)
+            ?? throw new Exception("Unable to start PowerShell.");
+        process.WaitForExit();
+
+        if (process.ExitCode != 0)
+        {
+            throw new Exception($"PowerShell exited with code {process.ExitCode}.");
+        }
+    }
+
+    void SignIpMidiFile(AbsolutePath path, string description)
+    {
+        RunPowerShell(
+            "-File", IpMidiSigningScript,
+            "-Path", path,
+            "-Description", description,
+            "-SubjectName", IpMidiSigningSubject,
+            "-TimestampUrl", IpMidiTimestampUrl,
+            "-ConfirmSimpleSignReady");
+    }
+
+    Dictionary<string, object> GetIpMidiSigningProperties(string platform, string edition)
+    {
+        return new Dictionary<string, object>
+        {
+            { "Platform", platform },
+            { "SolutionDir", IpMidiSetupSolutionFolder.ToString() + @"\" },
+            { "IpMidiEdition", edition },
+            { "IpMidiSign", "true" },
+            { "IpMidiSigningConfirmed", "true" },
+            { "IpMidiSigningSubject", IpMidiSigningSubject },
+            { "IpMidiTimestampUrl", IpMidiTimestampUrl },
+            { "IpMidiSigningScript", IpMidiSigningScript.ToString() },
+            { "IpMidiRequireDeveloperMode", "false" },
+            { "BuildProjectReferences", "false" }
+        };
+    }
+
+    Target T_PrepareSignedIpMidiRelease => _ => _
+        .Executes(() =>
+        {
+            Logging.Level = LoggingLevel;
+            SetMSBuildVersionNew();
+
+            if (!ConfirmSimpleSignReady)
+            {
+                throw new Exception(
+                    "Certum SimplySign readiness has not been confirmed. " +
+                    "Sign in to SimplySign Desktop and rerun with --confirm-simple-sign-ready.");
+            }
+
+            Environment.SetEnvironmentVariable(
+                "MIDI_REPO_ROOT",
+                NukeBuild.RootDirectory.ToString().TrimEnd('\\') + "\\");
+
+            if (!string.IsNullOrWhiteSpace(IpMidiSigningThumbprint))
+            {
+                Environment.SetEnvironmentVariable(
+                    "IPMIDI_SIGNING_THUMBPRINT",
+                    IpMidiSigningThumbprint.Replace(" ", ""));
+            }
+
+            RunPowerShell(
+                "-File", IpMidiSigningScript,
+                "-SubjectName", IpMidiSigningSubject,
+                "-TimestampUrl", IpMidiTimestampUrl,
+                "-ConfirmSimpleSignReady",
+                "-PreflightOnly");
+
+            _thisReleaseFolder =
+                ReleaseRootFolder /
+                $"ipMIDI 2.0.1 Signed ({DateTime.Now:yyyy-MM-dd HH-mm-ss})";
+            ThisReleaseFolder.CreateDirectory();
+        });
 
     Target T_Prerequisites => _ => _
         .Executes(() =>
@@ -689,6 +794,215 @@ class Build : NukeBuild
                     (setupFolder / setupFileName).Copy(ThisReleaseFolder / setupFileName);
                     BuiltIpMidiInstallers[$"{edition.ToLower()}-{projectPlatform.ToLower()}"] = setupFileName;
                 }
+            }
+        });
+
+    Target T_BuildSignedIpMidiPluginInstaller => _ => _
+        .DependsOn(T_PrepareSignedIpMidiRelease)
+        .Executes(() =>
+        {
+            string setupSolutionDir = IpMidiSetupSolutionFolder.ToString() + @"\";
+            var signedInstallerOutputs =
+                new Dictionary<string, AbsolutePath>();
+            BuiltIpMidiInstallers.Clear();
+
+            NuGetTasks.NuGetRestore(_ => _
+                .SetProcessWorkingDirectory(setupSolutionDir)
+                .SetSource(@"https://api.nuget.org/v3/index.json")
+                .SetSolutionDirectory(setupSolutionDir));
+
+            foreach (var platform in InstallerPlatforms)
+            {
+                var projectPlatform = platform.Equals(
+                    "Arm64",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? "ARM64"
+                    : platform;
+                string apiSolutionDir = ApiSolutionFolder.ToString() + @"\";
+
+                foreach (var dependencyProject in new[]
+                {
+                    ApiSolutionFolder / "idl" / "IDL.vcxproj",
+                    ApiSolutionFolder / "Libs" / "MidiEndpointNamingLib" / "MidiEndpointNamingLib.vcxproj",
+                    ApiSolutionFolder / "Libs" / "MidiPluginConfigurationLib" / "MidiPluginConfigurationLib.vcxproj"
+                })
+                {
+                    MSBuildTasks.MSBuild(_ => _
+                        .SetProcessToolPath(MSBuildPath)
+                        .SetTargetPath(dependencyProject)
+                        .SetMaxCpuCount(1)
+                        .SetProperty("Platform", projectPlatform)
+                        .SetProperty("SolutionDir", apiSolutionDir)
+                        .SetProperty("WindowsTargetPlatformVersion", "10.0.26100.0")
+                        .SetConfiguration(Configuration.Release)
+                        .SetTargets("Rebuild")
+                        .SetVerbosity(BuildVerbosity)
+                        .EnableNodeReuse());
+                }
+
+                foreach (var edition in new[] { "Retail", "Trial" })
+                {
+                    MSBuildTasks.MSBuild(_ => _
+                        .SetProcessToolPath(MSBuildPath)
+                        .SetTargetPath(
+                            ApiSolutionFolder /
+                            "Transport" /
+                            "IpMidiTransport" /
+                            "Midi2.IpMidiTransport.vcxproj")
+                        .SetMaxCpuCount(1)
+                        .SetProperty("Platform", projectPlatform)
+                        .SetProperty("SolutionDir", apiSolutionDir)
+                        .SetProperty("WindowsTargetPlatformVersion", "10.0.26100.0")
+                        .SetProperty("IpMidiEdition", edition)
+                        .SetConfiguration(Configuration.Release)
+                        .SetTargets("Rebuild")
+                        .SetVerbosity(BuildVerbosity)
+                        .EnableNodeReuse());
+
+                    var outputConfiguration =
+                        edition == "Trial" ? "Release_Trial" : "Release";
+                    var transportOutput =
+                        ApiSolutionFolder /
+                        "VSFiles" /
+                        projectPlatform /
+                        outputConfiguration /
+                        "Midi2.IpMidiTransport.dll";
+
+                    SignIpMidiFile(
+                        transportOutput,
+                        edition == "Trial"
+                            ? "ipMIDI Ethernet Ports for MIDI Services Trial Transport"
+                            : "ipMIDI Ethernet Ports for MIDI Services Transport");
+
+                    var stagingFolder =
+                        edition == "Trial"
+                            ? StagingRootFolder / "ipmidi-trial" / "api" / projectPlatform
+                            : ApiStagingFolder / projectPlatform;
+                    stagingFolder.CreateDirectory();
+                    transportOutput.CopyToDirectory(
+                        stagingFolder,
+                        ExistsPolicy.FileOverwrite);
+                }
+
+                foreach (var monitorConfiguration in new[] { "Release", "Release_Demo" })
+                {
+                    MSBuildTasks.MSBuild(_ => _
+                        .SetProcessToolPath(MSBuildPath)
+                        .SetTargetPath(IpMidiMonSolutionFolder / "midi2.sln")
+                        .SetMaxCpuCount(1)
+                        .SetProperty("Platform", projectPlatform)
+                        .SetProperty("WindowsTargetPlatformVersion", "10.0.26100.0")
+                        .SetConfiguration(monitorConfiguration)
+                        .SetTargets("Rebuild")
+                        .SetVerbosity(BuildVerbosity)
+                        .EnableNodeReuse());
+
+                    var monitorOutput =
+                        IpMidiMonSolutionFolder /
+                        projectPlatform /
+                        monitorConfiguration /
+                        "IPMidiMon.exe";
+                    SignIpMidiFile(
+                        monitorOutput,
+                        monitorConfiguration == "Release_Demo"
+                            ? "ipMIDI Monitor Trial"
+                            : "ipMIDI Monitor");
+                }
+
+                MSBuildTasks.MSBuild(_ => _
+                    .SetProcessToolPath(MSBuildPath)
+                    .SetTargetPath(
+                        SourceRootFolder /
+                        "oob-setup-shared" /
+                        "custom-actions" /
+                        "customactions.csproj")
+                    .SetMaxCpuCount(1)
+                    .SetProperty("Platform", projectPlatform)
+                    .SetProperty("IpMidiSign", "true")
+                    .SetProperty("IpMidiSigningConfirmed", "true")
+                    .SetProperty("IpMidiSigningSubject", IpMidiSigningSubject)
+                    .SetProperty("IpMidiTimestampUrl", IpMidiTimestampUrl)
+                    .SetProperty("IpMidiSigningScript", IpMidiSigningScript)
+                    .SetConfiguration(Configuration.Release)
+                    .SetTargets("Rebuild")
+                    .SetVerbosity(BuildVerbosity)
+                    .EnableNodeReuse());
+
+                foreach (var edition in new[] { "Retail", "Trial" })
+                {
+                    var signingProperties =
+                        GetIpMidiSigningProperties(projectPlatform, edition);
+
+                    MSBuildTasks.MSBuild(_ => _
+                        .SetProcessToolPath(MSBuildPath)
+                        .SetTargetPath(
+                            IpMidiSetupSolutionFolder /
+                            "api-package" /
+                            "api-package.wixproj")
+                        .SetMaxCpuCount(1)
+                        .SetProperties(signingProperties)
+                        .SetConfiguration(Configuration.Release)
+                        .SetTargets("Rebuild")
+                        .SetVerbosity(BuildVerbosity)
+                        .EnableNodeReuse());
+
+                    MSBuildTasks.MSBuild(_ => _
+                        .SetProcessToolPath(MSBuildPath)
+                        .SetTargetPath(
+                            IpMidiSetupSolutionFolder /
+                            "main-bundle" /
+                            "main-bundle.wixproj")
+                        .SetMaxCpuCount(1)
+                        .SetProperties(signingProperties)
+                        .SetConfiguration(Configuration.Release)
+                        .SetTargets("Rebuild")
+                        .SetVerbosity(BuildVerbosity)
+                        .EnableNodeReuse());
+
+                    var platformSuffix =
+                        projectPlatform == "ARM64" ? "-arm64" : "";
+                    var setupFileName =
+                        edition == "Trial"
+                            ? $"setupipmiditrial{platformSuffix}.exe"
+                            : $"setupipmidi{platformSuffix}.exe";
+                    var setupFolder =
+                        IpMidiSetupSolutionFolder /
+                        "main-bundle" /
+                        "bin" /
+                        projectPlatform /
+                        Configuration.Release;
+                    if (edition == "Trial")
+                    {
+                        setupFolder /= "Trial";
+                    }
+
+                    var installerKey =
+                        $"{edition.ToLower()}-{projectPlatform.ToLower()}";
+                    signedInstallerOutputs[installerKey] =
+                        setupFolder / setupFileName;
+                    BuiltIpMidiInstallers[installerKey] = setupFileName;
+                }
+            }
+
+            foreach (var item in signedInstallerOutputs)
+            {
+                item.Value.Copy(
+                    ThisReleaseFolder / BuiltIpMidiInstallers[item.Key],
+                    ExistsPolicy.FileOverwrite);
+            }
+
+            RunPowerShell(
+                "-File", IpMidiSigningManifestScript,
+                "-RepositoryRoot", NukeBuild.RootDirectory,
+                "-IpMidiMonRoot", IpMidiMonSolutionFolder,
+                "-ReleaseRoot", ThisReleaseFolder,
+                "-SubjectName", IpMidiSigningSubject);
+
+            Console.WriteLine(
+                $"\nSigned ipMIDI 2.0.1 release artifacts: {ThisReleaseFolder}");
+            foreach (var item in BuiltIpMidiInstallers)
+            {
+                Console.WriteLine($"  {item.Key.PadRight(15)} {item.Value}");
             }
         });
 
