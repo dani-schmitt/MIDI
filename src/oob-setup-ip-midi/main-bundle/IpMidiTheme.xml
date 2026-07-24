@@ -7,6 +7,7 @@
     <Font Id="1" Height="-24" Weight="500" Foreground="windowtext">Segoe UI</Font>
     <Font Id="2" Height="-22" Weight="500" Foreground="graytext">Segoe UI</Font>
     <Font Id="3" Height="-12" Weight="500" Foreground="windowtext" Background="window">Segoe UI</Font>
+    <Font Id="4" Height="-16" Weight="700" Foreground="windowtext" Background="window">Segoe UI</Font>
 
     <Window Width="485" Height="300" HexStyle="100a0000" FontId="0" Caption="#(loc.Caption)">
         <ImageControl X="11" Y="11" Width="64" Height="64" ImageFile="logo.png" Visible="yes"/>
@@ -105,7 +106,7 @@
                 <Text Condition="WixBundleAction = 8">#(loc.FailureRepairHeader)</Text>
             </Label>
             <Hypertext Name="FailureLogFileLink" X="11" Y="121" Width="-11" Height="42" FontId="3" TabStop="yes" HideWhenDisabled="yes">#(loc.FailureHyperlinkLogText)</Hypertext>
-            <Hypertext Name="FailureMessageText" X="22" Y="163" Width="-11" Height="51" FontId="3" TabStop="yes" HideWhenDisabled="yes" />
+            <Hypertext Name="FailureMessageText" X="11" Y="163" Width="-11" Height="62" FontId="4" TabStop="yes" HideWhenDisabled="yes" />
             <Label X="-11" Y="-51" Width="400" Height="34" FontId="3" DisablePrefix="yes" VisibleCondition="WixStdBARestartRequired">#(loc.FailureRestartText)</Label>
             <Button Name="FailureRestartButton" X="-91" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0" HideWhenDisabled="yes">#(loc.FailureRestartButton)</Button>
             <Button Name="FailureCloseButton" X="-11" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0">

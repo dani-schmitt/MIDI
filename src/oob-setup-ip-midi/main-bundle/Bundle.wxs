@@ -19,7 +19,7 @@
                         UpgradeCode="$(var.IpMidiRetailMsiUpgradeCode)"
                         Variable="IpMidiRetailProductState"
                         Result="state" />
-    <bal:Condition Message="The Retail edition of ipMIDI Ethernet Ports for MIDI Services is already installed. Uninstall it before installing the Trial edition."
+    <bal:Condition Message="The retail version of ipMIDI is already installed. Uninstall it before installing the Trial version."
                    Condition="WixBundleInstalled OR NOT (IpMidiRetailProductState = 5)" />
     <?else?>
     <RelatedBundle Id="$(var.IpMidiTrialBundleUpgradeCode)" Action="upgrade" />

@@ -22,7 +22,7 @@
                       Property="IPMIDI_RETAIL_EDITION_FOUND" />
     </Upgrade>
     <Launch Condition="Installed OR NOT IPMIDI_RETAIL_EDITION_FOUND"
-            Message="The Retail edition of ipMIDI Ethernet Ports for MIDI Services is already installed. Uninstall it, then use setupipmiditrial.exe to install the Trial edition." />
+            Message="The retail version of ipMIDI is already installed. Uninstall it before installing the Trial version." />
     <?else?>
     <Property Id="IPMIDI_BURN_CROSS_EDITION" Secure="yes" />
     <Upgrade Id="$(var.IpMidiTrialMsiUpgradeCode)">
@@ -48,6 +48,15 @@
     <Property Id="ARPSYSTEMCOMPONENT" Value="1" />
     <Property Id="ARPHELPLINK" Value="https://nerds.de" />
     <Property Id="WixUnelevatedShellExecTarget" Value="[#IpMidiMonitorExe]" />
+
+    <util:CloseApplication Id="CloseIpMidiMonitor"
+                           Target="IPMidiMon.exe"
+                           CloseMessage="yes"
+                           ElevatedCloseMessage="yes"
+                           PromptToContinue="no"
+                           RebootPrompt="no"
+                           TerminateProcess="0"
+                           Timeout="5" />
 
     <Property Id="IPMIDI_CONFIGURE_FIREWALL" Value="1" Secure="yes">
       <RegistrySearch Id="IpMidiFirewallPreferenceSearch"
@@ -224,6 +233,9 @@
       <Custom Action="Action_CheckIpMidiPrerequisites"
               Before="LaunchConditions"
               Condition="NOT Installed AND NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="Wix4CloseApplications_$(sys.BUILDARCHSHORT)"
+              Before="InstallValidate"
+              Condition="VersionNT &gt; 400" />
       <Custom Action="Action_TakeRegistryOwnership"
               Before="CreateFolders"
               Condition="(NOT Installed) AND NOT (REMOVE = &quot;ALL&quot;)" />
