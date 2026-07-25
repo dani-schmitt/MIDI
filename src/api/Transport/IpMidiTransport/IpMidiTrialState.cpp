@@ -12,7 +12,7 @@ namespace
     constexpr wchar_t RuntimeStateKey[] =
         L"SOFTWARE\\nerds.de\\ipMIDI\\Runtime\\{E458A817-AFD3-4565-AF79-3B46020B073B}";
     constexpr wchar_t RuntimeStateValue[] = L"{3BC4E20E-46AD-47D7-A835-BE4F4182B9B0}";
-    constexpr wchar_t RuntimeStateSecurity[] = L"D:P(A;;KA;;;SY)(A;;KR;;;BA)";
+    constexpr wchar_t MidiServiceAccount[] = L"NT SERVICE\\midisrv";
     constexpr uint64_t EvaluationDurationMilliseconds = 60ull * 60ull * 1000ull;
     constexpr uint32_t EvaluationDurationSeconds = 60u * 60u;
     constexpr uint32_t RecordVersion = 1;
@@ -48,6 +48,48 @@ namespace
     bool IsZeroGuid(GUID const& value) noexcept
     {
         return InlineIsEqualGUID(value, GUID_NULL) != FALSE;
+    }
+
+    HRESULT CreateRuntimeStateSecurityDescriptor(
+        _Out_ wil::unique_hlocal& securityDescriptor) noexcept
+    {
+        try
+        {
+            DWORD sidSize{};
+            DWORD domainSize{};
+            SID_NAME_USE sidType{};
+            LookupAccountNameW(
+                nullptr, MidiServiceAccount, nullptr, &sidSize, nullptr, &domainSize, &sidType);
+            RETURN_LAST_ERROR_IF(GetLastError() != ERROR_INSUFFICIENT_BUFFER);
+
+            std::vector<BYTE> sidBytes(sidSize);
+            std::vector<wchar_t> domainName(domainSize);
+            RETURN_LAST_ERROR_IF(!LookupAccountNameW(
+                nullptr,
+                MidiServiceAccount,
+                sidBytes.data(),
+                &sidSize,
+                domainName.data(),
+                &domainSize,
+                &sidType));
+
+            wil::unique_hlocal_string sidString;
+            RETURN_LAST_ERROR_IF(!ConvertSidToStringSidW(sidBytes.data(), sidString.put()));
+
+            const std::wstring security =
+                L"D:P(A;;KA;;;SY)(A;;KR;;;BA)(A;;KA;;;" +
+                std::wstring{ sidString.get() } + L")";
+
+            PSECURITY_DESCRIPTOR descriptor{};
+            RETURN_LAST_ERROR_IF(!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                security.c_str(), SDDL_REVISION_1, &descriptor, nullptr));
+            securityDescriptor.reset(descriptor);
+            return S_OK;
+        }
+        catch (...)
+        {
+            return wil::ResultFromCaughtException();
+        }
     }
 }
 #endif
@@ -99,6 +141,22 @@ HRESULT IpMidiTrialState::Initialize() noexcept
     {
         SetFaultedLocked(loadResult);
         return loadResult;
+    }
+
+    // Re-protect an existing record with machine scope. This migrates records
+    // written by earlier builds and keeps the Trial state readable if Windows
+    // changes the midisrv service account.
+    const auto migrateResult = ProtectAndWriteRecordLocked(m_startTick);
+    if (FAILED(migrateResult))
+    {
+        SetFaultedLocked(migrateResult);
+        return migrateResult;
+    }
+    const auto rearmResult = ArmNotificationLocked();
+    if (FAILED(rearmResult))
+    {
+        SetFaultedLocked(rearmResult);
+        return rearmResult;
     }
 
     RefreshExpirationLocked();
@@ -288,20 +346,15 @@ HRESULT IpMidiTrialState::OpenExistingStateLocked() noexcept
         HKEY_LOCAL_MACHINE,
         RuntimeStateKey,
         0,
-        KEY_QUERY_VALUE | KEY_NOTIFY | KEY_WOW64_64KEY,
+        KEY_QUERY_VALUE | KEY_SET_VALUE | KEY_NOTIFY | KEY_WOW64_64KEY,
         m_stateKey.put());
     return HRESULT_FROM_WIN32(result);
 }
 
 HRESULT IpMidiTrialState::CreateStateLocked() noexcept
 {
-    PSECURITY_DESCRIPTOR descriptor{};
-    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
-        RuntimeStateSecurity, SDDL_REVISION_1, &descriptor, nullptr))
-    {
-        return HRESULT_FROM_WIN32(GetLastError());
-    }
-    wil::unique_hlocal securityDescriptor{ descriptor };
+    wil::unique_hlocal securityDescriptor;
+    RETURN_IF_FAILED(CreateRuntimeStateSecurityDescriptor(securityDescriptor));
     SECURITY_ATTRIBUTES securityAttributes
     {
         sizeof(SECURITY_ATTRIBUTES),
@@ -395,7 +448,7 @@ HRESULT IpMidiTrialState::ProtectAndWriteRecordLocked(uint64_t startTick) noexce
     auto entropy = EntropyBlob();
     DATA_BLOB protectedBlob{};
     if (!CryptProtectData(&plainBlob, L"ipMIDI runtime state", &entropy, nullptr, nullptr,
-        CRYPTPROTECT_UI_FORBIDDEN, &protectedBlob))
+        CRYPTPROTECT_UI_FORBIDDEN | CRYPTPROTECT_LOCAL_MACHINE, &protectedBlob))
     {
         return HRESULT_FROM_WIN32(GetLastError());
     }

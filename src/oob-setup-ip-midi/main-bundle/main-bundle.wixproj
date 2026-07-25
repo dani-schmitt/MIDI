@@ -58,8 +58,8 @@
     <Content Include="Licence.rtf" />
     <Content Include="ipmidi.ico" />
     <Content Include="ipmidi-muted.ico" />
-    <Content Include="ipmidi-icon-master.png" />
-    <Content Include="ipmidi-muted-icon-master.png" />
+    <Content Include="ipmidi-icon-96.png" />
+    <Content Include="ipmidi-icon-256.png" />
     <Content Include="ipmidi-setup-logo.png" />
   </ItemGroup>
   <ItemGroup>

@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using WixToolset.Dtf.WindowsInstaller;
@@ -874,47 +875,34 @@ namespace custom_actions
         }
 
         [CustomAction]
-        public static ActionResult ConfigureMidiServiceForIpMidi(Session session)
-        {
-            session.Log("ConfigureMidiServiceForIpMidi: Started");
-
-            try
-            {
-                string scPath = Path.Combine(Environment.SystemDirectory, "sc.exe");
-
-                if (!RunProcess(session, scPath, "config midisrv obj= LocalSystem", 20000))
-                {
-                    session.Log("ERROR: ConfigureMidiServiceForIpMidi: Unable to configure midisrv to run as LocalSystem.");
-                    return ActionResult.Failure;
-                }
-
-                session.Log("ConfigureMidiServiceForIpMidi: Completed");
-                return ActionResult.Success;
-            }
-            catch (Exception ex)
-            {
-                session.Log("ERROR: ConfigureMidiServiceForIpMidi: Exception " + ex.ToString());
-                return ActionResult.Failure;
-            }
-        }
-
-        [CustomAction]
         public static ActionResult InitializeIpMidiRegistryValues(Session session)
         {
             session.Log("InitializeIpMidiRegistryValues: Started");
 
             try
             {
+                SecurityIdentifier midiServiceSid = (SecurityIdentifier)new NTAccount(
+                    "NT SERVICE", "midisrv").Translate(typeof(SecurityIdentifier));
+
                 using (RegistryKey localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
-                using (RegistryKey parameters = localMachine.CreateSubKey(
-                    @"SOFTWARE\nerds.de\ipMIDI\Parameters",
+                using (RegistryKey ipMidi = localMachine.CreateSubKey(
+                    @"SOFTWARE\nerds.de\ipMIDI",
+                    RegistryKeyPermissionCheck.ReadWriteSubTree))
+                using (RegistryKey parameters = ipMidi?.CreateSubKey(
+                    "Parameters",
+                    RegistryKeyPermissionCheck.ReadWriteSubTree))
+                using (RegistryKey runtime = ipMidi?.CreateSubKey(
+                    "Runtime",
                     RegistryKeyPermissionCheck.ReadWriteSubTree))
                 {
-                    if (parameters == null)
+                    if (ipMidi == null || parameters == null || runtime == null)
                     {
-                        session.Log("ERROR: InitializeIpMidiRegistryValues: Unable to create Parameters key.");
+                        session.Log("ERROR: InitializeIpMidiRegistryValues: Unable to create ipMIDI registry keys.");
                         return ActionResult.Failure;
                     }
+
+                    SetParametersRegistrySecurity(parameters, midiServiceSid);
+                    SetRuntimeRegistrySecurity(runtime, midiServiceSid);
 
                     EnsureRegistryDword(parameters, "WantedPorts", 1);
                     EnsureRegistryDword(parameters, "ActualPorts", 0);
@@ -930,6 +918,64 @@ namespace custom_actions
                 session.Log("ERROR: InitializeIpMidiRegistryValues: Exception " + ex.ToString());
                 return ActionResult.Failure;
             }
+        }
+
+        private static void SetParametersRegistrySecurity(
+            RegistryKey key,
+            SecurityIdentifier midiServiceSid)
+        {
+            SecurityIdentifier systemSid =
+                new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+            SecurityIdentifier administratorsSid =
+                new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+            SecurityIdentifier usersSid =
+                new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+
+            RegistrySecurity security = new RegistrySecurity();
+            security.SetAccessRuleProtection(true, false);
+            security.SetOwner(administratorsSid);
+            security.AddAccessRule(CreateRegistryAccessRule(
+                systemSid, RegistryRights.FullControl));
+            security.AddAccessRule(CreateRegistryAccessRule(
+                administratorsSid, RegistryRights.FullControl));
+            security.AddAccessRule(CreateRegistryAccessRule(
+                midiServiceSid, RegistryRights.FullControl));
+            security.AddAccessRule(CreateRegistryAccessRule(
+                usersSid, RegistryRights.ReadKey));
+            key.SetAccessControl(security);
+        }
+
+        private static void SetRuntimeRegistrySecurity(
+            RegistryKey key,
+            SecurityIdentifier midiServiceSid)
+        {
+            SecurityIdentifier systemSid =
+                new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+            SecurityIdentifier administratorsSid =
+                new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+
+            RegistrySecurity security = new RegistrySecurity();
+            security.SetAccessRuleProtection(true, false);
+            security.SetOwner(systemSid);
+            security.AddAccessRule(CreateRegistryAccessRule(
+                systemSid, RegistryRights.FullControl));
+            security.AddAccessRule(CreateRegistryAccessRule(
+                administratorsSid, RegistryRights.ReadKey));
+            security.AddAccessRule(CreateRegistryAccessRule(
+                midiServiceSid, RegistryRights.FullControl));
+            key.SetAccessControl(security);
+        }
+
+        private static RegistryAccessRule CreateRegistryAccessRule(
+            SecurityIdentifier identity,
+            RegistryRights rights)
+        {
+            return new RegistryAccessRule(
+                identity,
+                rights,
+                InheritanceFlags.ContainerInherit,
+                PropagationFlags.None,
+                AccessControlType.Allow);
         }
 
         private static void EnsureRegistryDword(RegistryKey key, string valueName, int defaultValue)

@@ -195,12 +195,6 @@
                   BinaryRef="CustomActionBinary"
                   DllEntry="TakeRegistryOwnership"
                   Return="check" />
-    <CustomAction Id="Action_ConfigureMidiServiceForIpMidi"
-                  Impersonate="no"
-                  Execute="deferred"
-                  BinaryRef="CustomActionBinary"
-                  DllEntry="ConfigureMidiServiceForIpMidi"
-                  Return="check" />
     <CustomAction Id="Action_SetIpMidiFirewallData"
                   Property="Action_ConfigureIpMidiFirewallRules"
                   Value="ConfigureFirewall=[IPMIDI_CONFIGURE_FIREWALL]" />
@@ -244,11 +238,8 @@
       <Custom Action="Action_TakeRegistryOwnership"
               Before="CreateFolders"
               Condition="(NOT Installed) AND NOT (REMOVE = &quot;ALL&quot;)" />
-      <Custom Action="Action_ConfigureMidiServiceForIpMidi"
-              After="StopServices"
-              Condition="NOT (REMOVE = &quot;ALL&quot;)" />
       <Custom Action="Action_InitializeIpMidiRegistryValues"
-              After="Action_ConfigureMidiServiceForIpMidi"
+              After="StopServices"
               Condition="NOT (REMOVE = &quot;ALL&quot;)" />
       <Custom Action="Action_SetIpMidiFirewallData"
               After="Action_InitializeIpMidiRegistryValues"
