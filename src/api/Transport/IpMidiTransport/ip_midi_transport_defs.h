@@ -13,7 +13,7 @@
 
 #define TRANSPORT_LAYER_GUID __uuidof(Midi2IpMidiTransport);
 
-#define TRANSPORT_MANUFACTURER L"Microsoft"
+#define TRANSPORT_MANUFACTURER L"nerds.de"
 #define TRANSPORT_CODE L"IPMIDI"
 
 inline constexpr uint8_t IP_MIDI_MIN_PORT_COUNT = 1;

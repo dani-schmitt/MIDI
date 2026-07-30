@@ -71,14 +71,18 @@ BEGIN
     BEGIN
         BLOCK "040904B0"
         BEGIN
-            VALUE "CompanyName", "Microsoft Corporation"
+            VALUE "CompanyName", "nerds.de"
 #ifdef IPMIDI_TRIAL
-            VALUE "FileDescription", "Windows MIDI Services ipMIDI Trial Transport Plugin"
+            VALUE "FileDescription", "ipMIDI Ethernet Ports for MIDI Services Trial Transport Plugin"
 #else
-            VALUE "FileDescription", "Windows MIDI Services ipMIDI Transport Plugin"
+            VALUE "FileDescription", "ipMIDI Ethernet Ports for MIDI Services Transport Plugin"
 #endif
-            VALUE "LegalCopyright", "Copyright (c) Microsoft Corporation. All rights reserved."
-            VALUE "ProductName", "Microsoft Windows MIDI Services"
+            VALUE "LegalCopyright", "Copyright (c) 2005-2026 nerds.de. Portions copyright Microsoft Corporation."
+#ifdef IPMIDI_TRIAL
+            VALUE "ProductName", "ipMIDI Ethernet Ports for MIDI Services (Trial)"
+#else
+            VALUE "ProductName", "ipMIDI Ethernet Ports for MIDI Services"
+#endif
 
             VALUE "InternalName", "Midi2.IpMidiTransport.dll"
             VALUE "OriginalFilename", "Midi2.IpMidiTransport.dll"

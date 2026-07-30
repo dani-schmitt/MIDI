@@ -10,12 +10,12 @@
 
 class MidiIpMidiTransportTelemetryProvider : public wil::TraceLoggingProvider
 {
-    IMPLEMENT_TRACELOGGING_CLASS_WITH_MICROSOFT_TELEMETRY(
+    IMPLEMENT_TRACELOGGING_CLASS_WITHOUT_TELEMETRY(
         MidiIpMidiTransportTelemetryProvider,
-        "Microsoft.Windows.Midi2.IpMidiTransport",
-        // {76682b52-a931-45d8-b044-3e3a09f091e5}
-        // From PS> [System.Diagnostics.Tracing.EventSource]::new("Microsoft.Windows.Midi2.IpMidiTransport").Guid
-        (0x76682b52,0xa931,0x45d8,0xb0,0x44,0x3e,0x3a,0x09,0xf0,0x91,0xe5))
+        "nerds.de.ipMIDI.Transport",
+        // {0a7f8baf-42fc-535e-70ee-e402bcbdbffa}
+        // From PS> [System.Diagnostics.Tracing.EventSource]::new("nerds.de.ipMIDI.Transport").Guid
+        (0x0a7f8baf,0x42fc,0x535e,0x70,0xee,0xe4,0x02,0xbc,0xbd,0xbf,0xfa))
 };
 
 using namespace ATL;
