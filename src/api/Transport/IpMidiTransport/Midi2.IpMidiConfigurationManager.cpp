@@ -23,6 +23,7 @@ namespace
     constexpr wchar_t ReceiveFailureMaskProperty[] = L"receiveFailureMask";
     constexpr wchar_t SendFailureMaskProperty[] = L"sendFailureMask";
     constexpr wchar_t GenerationProperty[] = L"generation";
+    constexpr wchar_t ActualPortsProperty[] = L"actualPorts";
 
     wchar_t const* TrialStateName(IpMidiTrialStateKind state) noexcept
     {
@@ -67,9 +68,13 @@ namespace
             json::JsonValue::CreateBooleanValue(status.RebootRequired));
     }
 
-    void SetNetworkStatusResponse(json::JsonObject& responseObject, IpMidiNetworkStatus const& status)
+    void SetNetworkStatusResponse(
+        json::JsonObject& responseObject,
+        IpMidiNetworkStatus const& status,
+        uint8_t actualPorts)
     {
         internal::SetConfigurationResponseObjectSuccess(responseObject);
+        responseObject.SetNamedValue(ActualPortsProperty, json::JsonValue::CreateNumberValue(actualPorts));
         responseObject.SetNamedValue(SafetyMuteMaskProperty, json::JsonValue::CreateNumberValue(status.SafetyMuteMask));
         responseObject.SetNamedValue(EffectiveMuteMaskProperty, json::JsonValue::CreateNumberValue(status.EffectiveMuteMask));
         responseObject.SetNamedValue(OverflowMaskProperty, json::JsonValue::CreateNumberValue(status.OverflowMask));
@@ -187,7 +192,10 @@ HRESULT CMidi2IpMidiConfigurationManager::ProcessCommand(
 
         if (command.Command() == GetNetworkStatusCommand)
         {
-            SetNetworkStatusResponse(responseObject, networkEngine->GetNetworkStatus());
+            SetNetworkStatusResponse(
+                responseObject,
+                networkEngine->GetNetworkStatus(),
+                networkEngine->PortCount());
             return S_OK;
         }
 
