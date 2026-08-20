@@ -28,8 +28,10 @@
         "T_BuildBasicLoopbackPluginInstaller",
         "T_BuildInDevelopmentServicePlugins",
         "T_BuildIpMidiPluginInstaller",
+        "T_BuildLoopBe30PluginInstaller",
         "T_BuildNetworkMidiInstaller",
         "T_BuildSignedIpMidiPluginInstaller",
+        "T_BuildSignedLoopBe30PluginInstaller",
         "T_BuildVirtualPatchBayPluginInstaller",
         "T_CreateVersionIncludes",
         "T_PrepareSignedIpMidiRelease",
@@ -114,6 +116,10 @@
         "IpMidiSigningThumbprint": {
           "type": "string",
           "description": "Optional one-run certificate thumbprint when more than one valid Daniel Schmitt certificate is available"
+        },
+        "LoopBe30SigningThumbprint": {
+          "type": "string",
+          "description": "Optional one-run LoopBe30 certificate thumbprint when more than one valid Daniel Schmitt certificate is available"
         }
       }
     },

@@ -66,7 +66,7 @@ $now = Get-Date
 $normalizedRequestedThumbprint = $CertificateThumbprint -replace "\s", ""
 
 $matchingCertificates = @(
-    Get-ChildItem -Path Cert:\CurrentUser\My -CodeSigningCert |
+    Get-ChildItem -Path Cert:\CurrentUser\My |
         Where-Object {
             $_.GetNameInfo(
                 [System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName,
