@@ -108,6 +108,73 @@ function Invoke-Sign {
     }
 }
 
+function Assert-MsiUpgradeSequence {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "The LoopBe30 MSI was not found for sequence validation: '$Path'."
+    }
+
+    $installer = $null
+    $database = $null
+    $view = $null
+    try {
+        $installer = New-Object -ComObject WindowsInstaller.Installer
+        $database = $installer.OpenDatabase($Path, 0)
+        $view = $database.OpenView(
+            'SELECT `Action`,`Sequence` FROM `InstallExecuteSequence`')
+        $view.Execute()
+
+        $sequences = @{}
+        while ($null -ne ($record = $view.Fetch())) {
+            $action = $record.StringData(1)
+            if ($action -in @(
+                "InstallInitialize",
+                "RemoveExistingProducts",
+                "InstallFiles",
+                "InstallFinalize",
+                "Action_LaunchLoopBe30Mon")) {
+                $sequences[$action] = $record.IntegerData(2)
+            }
+        }
+
+        $requiredActions = @(
+            "InstallInitialize",
+            "RemoveExistingProducts",
+            "InstallFiles",
+            "InstallFinalize",
+            "Action_LaunchLoopBe30Mon"
+        )
+        foreach ($action in $requiredActions) {
+            if (-not $sequences.ContainsKey($action)) {
+                throw "The LoopBe30 MSI is missing the '$action' execute-sequence action."
+            }
+        }
+
+        if (-not (
+            $sequences["InstallInitialize"] -lt $sequences["RemoveExistingProducts"] -and
+            $sequences["RemoveExistingProducts"] -lt $sequences["InstallFiles"] -and
+            $sequences["InstallFiles"] -lt $sequences["InstallFinalize"] -and
+            $sequences["InstallFinalize"] -lt $sequences["Action_LaunchLoopBe30Mon"])) {
+            throw "The LoopBe30 MSI upgrade sequence is unsafe. Related products must be removed before new files are installed, and the Monitor must launch only after installation finalizes."
+        }
+
+        Write-Host "Validated safe MSI upgrade sequence in '$Path'."
+    }
+    finally {
+        if ($null -ne $view) {
+            try { $view.Close() } catch { }
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)
+        }
+        if ($null -ne $database) {
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($database)
+        }
+        if ($null -ne $installer) {
+            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)
+        }
+    }
+}
+
 if ($Signed) {
     if (-not $ConfirmSimpleSignReady) {
         throw "Sign in to Certum SimplySign Desktop and rerun with -ConfirmSimpleSignReady."
@@ -234,17 +301,30 @@ foreach ($platform in $platforms) {
 
         Invoke-MsBuild -Project $msiProject -Configuration "Release" -Platform $platform `
             -Properties $installerProperties -Restore
+
+        $suffix = if ($platform -eq "ARM64") { "-arm64" } else { "" }
+        $editionFolder = if ($edition -eq "Trial") { "Trial" } else { "" }
+        $msiName = if ($edition -eq "Trial") {
+            "LoopBe30TrialSetup$suffix.msi"
+        }
+        else {
+            "LoopBe30Setup$suffix.msi"
+        }
+        $msiOutput = Join-Path $setupRoot "api-package\bin\$platform\Release"
+        if ($editionFolder) {
+            $msiOutput = Join-Path $msiOutput $editionFolder
+        }
+        Assert-MsiUpgradeSequence -Path (Join-Path $msiOutput $msiName)
+
         Invoke-MsBuild -Project $bundleProject -Configuration "Release" -Platform $platform `
             -Properties $installerProperties -Restore
 
-        $suffix = if ($platform -eq "ARM64") { "-arm64" } else { "" }
         $setupName = if ($edition -eq "Trial") {
             "setuploopbe30trial$suffix.exe"
         }
         else {
             "setuploopbe30$suffix.exe"
         }
-        $editionFolder = if ($edition -eq "Trial") { "Trial" } else { "" }
         $bundleOutput = Join-Path $setupRoot "main-bundle\bin\$platform\Release"
         if ($editionFolder) {
             $bundleOutput = Join-Path $bundleOutput $editionFolder

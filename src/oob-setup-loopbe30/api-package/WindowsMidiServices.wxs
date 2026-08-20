@@ -13,7 +13,7 @@
     <MediaTemplate EmbedCab="yes" />
     <util:QueryNativeMachine />
 
-    <MajorUpgrade Schedule="afterInstallFinalize"
+    <MajorUpgrade Schedule="afterInstallInitialize"
                   DowngradeErrorMessage="A newer version of LoopBe30 is already installed." />
 
     <?if $(var.LoopBe30Edition) = Trial ?>
