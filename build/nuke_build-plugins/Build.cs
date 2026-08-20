@@ -161,6 +161,11 @@ class Build : NukeBuild
     AbsolutePath IpMidiSigningScript => BuildRootFolder / "signing" / "Sign-IpMidiFile.ps1";
     AbsolutePath IpMidiSigningManifestScript => BuildRootFolder / "signing" / "New-IpMidiSigningManifest.ps1";
 
+    AbsolutePath LoopBe30BuildScript => BuildRootFolder / "loopbe30" / "Build-LoopBe30.ps1";
+
+    [Parameter("Optional one-run LoopBe30 certificate thumbprint when more than one valid Daniel Schmitt certificate is available.")]
+    readonly string LoopBe30SigningThumbprint;
+
 
     public static int Main () => Execute<Build>(x => x.BuildAndPublishAll);
 
@@ -1004,6 +1009,48 @@ class Build : NukeBuild
             {
                 Console.WriteLine($"  {item.Key.PadRight(15)} {item.Value}");
             }
+        });
+
+    Target T_BuildLoopBe30PluginInstaller => _ => _
+        .DependsOn(T_Prerequisites)
+        .Executes(() =>
+        {
+            Logging.Level = LoggingLevel;
+            RunPowerShell(
+                "-File", LoopBe30BuildScript,
+                "-RepositoryRoot", NukeBuild.RootDirectory,
+                "-MonitorRepositoryRoot", IpMidiMonSolutionFolder);
+        });
+
+    Target T_BuildSignedLoopBe30PluginInstaller => _ => _
+        .DependsOn(T_BuildLoopBe30PluginInstaller)
+        .Executes(() =>
+        {
+            Logging.Level = LoggingLevel;
+
+            if (!ConfirmSimpleSignReady)
+            {
+                throw new Exception(
+                    "Certum SimplySign readiness has not been confirmed. " +
+                    "Sign in to SimplySign Desktop and rerun with --confirm-simple-sign-ready.");
+            }
+
+            var arguments = new List<string>
+            {
+                "-File", LoopBe30BuildScript,
+                "-RepositoryRoot", NukeBuild.RootDirectory,
+                "-MonitorRepositoryRoot", IpMidiMonSolutionFolder,
+                "-Signed",
+                "-ConfirmSimpleSignReady"
+            };
+
+            if (!string.IsNullOrWhiteSpace(LoopBe30SigningThumbprint))
+            {
+                arguments.Add("-CertificateThumbprint");
+                arguments.Add(LoopBe30SigningThumbprint.Replace(" ", ""));
+            }
+
+            RunPowerShell(arguments.ToArray());
         });
 
 

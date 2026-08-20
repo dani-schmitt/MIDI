@@ -1,0 +1,97 @@
+<Project Sdk="WixToolset.Sdk/4.0.2">
+  <PropertyGroup>
+    <LoopBe30Edition Condition="'$(LoopBe30Edition)' == ''">Retail</LoopBe30Edition>
+    <LoopBe30Sign Condition="'$(LoopBe30Sign)' == ''">false</LoopBe30Sign>
+    <LoopBe30SigningConfirmed Condition="'$(LoopBe30SigningConfirmed)' == ''">false</LoopBe30SigningConfirmed>
+    <LoopBe30SigningSubject Condition="'$(LoopBe30SigningSubject)' == ''">Daniel Schmitt</LoopBe30SigningSubject>
+    <LoopBe30TimestampUrl Condition="'$(LoopBe30TimestampUrl)' == ''">http://time.certum.pl</LoopBe30TimestampUrl>
+    <LoopBe30SigningScript Condition="'$(LoopBe30SigningScript)' == ''">$(MIDI_REPO_ROOT)build\signing\Sign-LoopBe30File.ps1</LoopBe30SigningScript>
+    <SignOutput Condition="'$(LoopBe30Sign)' == 'true'">true</SignOutput>
+    <OutputType>Bundle</OutputType>
+    <InstallerPlatform Condition="'$(Platform)' == 'ARM64'">arm64</InstallerPlatform>
+    <InstallerPlatform Condition="'$(Platform)' != 'ARM64'">x64</InstallerPlatform>
+    <LoopBe30PlatformSuffix Condition="'$(Platform)' == 'ARM64'">-arm64</LoopBe30PlatformSuffix>
+    <LoopBe30ArchitectureName Condition="'$(Platform)' == 'ARM64'">ARM64</LoopBe30ArchitectureName>
+    <LoopBe30ArchitectureName Condition="'$(Platform)' != 'ARM64'">x64</LoopBe30ArchitectureName>
+    <LoopBe30NativeMachine Condition="'$(Platform)' == 'ARM64'">43620</LoopBe30NativeMachine>
+    <LoopBe30NativeMachine Condition="'$(Platform)' != 'ARM64'">34404</LoopBe30NativeMachine>
+    <OutputName Condition="'$(LoopBe30Edition)' == 'Retail'">setuploopbe30$(LoopBe30PlatformSuffix)</OutputName>
+    <OutputName Condition="'$(LoopBe30Edition)' == 'Trial'">setuploopbe30trial$(LoopBe30PlatformSuffix)</OutputName>
+    <LoopBe30BundleName Condition="'$(LoopBe30Edition)' == 'Retail'">LoopBe30 for Windows MIDI Services</LoopBe30BundleName>
+    <LoopBe30BundleName Condition="'$(LoopBe30Edition)' == 'Trial'">LoopBe30 for Windows MIDI Services (Trial)</LoopBe30BundleName>
+    <LoopBe30BundleVersion>2.0.0</LoopBe30BundleVersion>
+    <LoopBe30RetailBundleUpgradeCode>4b6d855e-3fa5-463c-aaa0-139c8c1e607b</LoopBe30RetailBundleUpgradeCode>
+    <LoopBe30TrialBundleUpgradeCode>b294c394-f5ad-4088-9c82-b4bf57f9f255</LoopBe30TrialBundleUpgradeCode>
+    <LoopBe30BundleUpgradeCode Condition="'$(LoopBe30Edition)' == 'Retail'">$(LoopBe30RetailBundleUpgradeCode)</LoopBe30BundleUpgradeCode>
+    <LoopBe30BundleUpgradeCode Condition="'$(LoopBe30Edition)' == 'Trial'">$(LoopBe30TrialBundleUpgradeCode)</LoopBe30BundleUpgradeCode>
+    <LoopBe30MsiOutputName Condition="'$(LoopBe30Edition)' == 'Retail'">LoopBe30Setup$(LoopBe30PlatformSuffix)</LoopBe30MsiOutputName>
+    <LoopBe30MsiOutputName Condition="'$(LoopBe30Edition)' == 'Trial'">LoopBe30TrialSetup$(LoopBe30PlatformSuffix)</LoopBe30MsiOutputName>
+    <LoopBe30MsiPackageId Condition="'$(LoopBe30Edition)' == 'Retail' and '$(Platform)' != 'ARM64'">LoopBe30Setup</LoopBe30MsiPackageId>
+    <LoopBe30MsiPackageId Condition="'$(LoopBe30Edition)' == 'Trial' and '$(Platform)' != 'ARM64'">LoopBe30TrialSetup</LoopBe30MsiPackageId>
+    <LoopBe30MsiPackageId Condition="'$(LoopBe30Edition)' == 'Retail' and '$(Platform)' == 'ARM64'">LoopBe30SetupArm64</LoopBe30MsiPackageId>
+    <LoopBe30MsiPackageId Condition="'$(LoopBe30Edition)' == 'Trial' and '$(Platform)' == 'ARM64'">LoopBe30TrialSetupArm64</LoopBe30MsiPackageId>
+    <LoopBe30RetailMsiUpgradeCode>44eb8d67-e4c6-4077-b534-8e7420b595a9</LoopBe30RetailMsiUpgradeCode>
+    <LoopBe30TrialMsiUpgradeCode>1283d1ca-89d3-4940-bb74-f47bbe490825</LoopBe30TrialMsiUpgradeCode>
+    <LoopBe30StagingRoot Condition="'$(LoopBe30StagingRoot)' == '' and '$(LoopBe30Edition)' == 'Retail'">$(MIDI_REPO_ROOT)build\staging</LoopBe30StagingRoot>
+    <LoopBe30StagingRoot Condition="'$(LoopBe30StagingRoot)' == '' and '$(LoopBe30Edition)' == 'Trial'">$(MIDI_REPO_ROOT)build\staging\loopbe30-trial</LoopBe30StagingRoot>
+    <LoopBe30MonRoot Condition="'$(LoopBe30MonRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\midi2\loough</LoopBe30MonRoot>
+    <LoopBe30RequireDeveloperMode Condition="'$(LoopBe30RequireDeveloperMode)' == '' and '$(LoopBe30Sign)' == 'true'">false</LoopBe30RequireDeveloperMode>
+    <LoopBe30RequireDeveloperMode Condition="'$(LoopBe30RequireDeveloperMode)' == ''">true</LoopBe30RequireDeveloperMode>
+    <BuildDate>$([System.DateTime]::Now.ToString("yyyyMMddhhmm"))</BuildDate>
+    <DefineConstants>$(DefineConstants);BuildDate=$(BuildDate);LoopBe30Edition=$(LoopBe30Edition);LoopBe30BundleName=$(LoopBe30BundleName);LoopBe30BundleVersion=$(LoopBe30BundleVersion);LoopBe30BundleUpgradeCode=$(LoopBe30BundleUpgradeCode);LoopBe30RetailBundleUpgradeCode=$(LoopBe30RetailBundleUpgradeCode);LoopBe30TrialBundleUpgradeCode=$(LoopBe30TrialBundleUpgradeCode);LoopBe30RetailMsiUpgradeCode=$(LoopBe30RetailMsiUpgradeCode);LoopBe30TrialMsiUpgradeCode=$(LoopBe30TrialMsiUpgradeCode);LoopBe30MsiOutputName=$(LoopBe30MsiOutputName);LoopBe30MsiPackageId=$(LoopBe30MsiPackageId);LoopBe30MonRoot=$(LoopBe30MonRoot);LoopBe30RequireDeveloperMode=$(LoopBe30RequireDeveloperMode);LoopBe30ArchitectureName=$(LoopBe30ArchitectureName);LoopBe30NativeMachine=$(LoopBe30NativeMachine)</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(LoopBe30Edition)' == 'Trial'">
+    <OutputPath>bin\$(Platform)\$(Configuration)\Trial\</OutputPath>
+    <IntermediateOutputPath>obj\$(Platform)\$(Configuration)\Trial\</IntermediateOutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <SuppressValidation>true</SuppressValidation>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
+    <SuppressValidation>true</SuppressValidation>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="LoopBe30Theme.xml" />
+    <Content Include="LoopBe30Theme.wxl" />
+    <Content Include="Licence.rtf" />
+    <Content Include="loopbe30.ico" />
+    <Content Include="loopbe30-muted.ico" />
+    <Content Include="loopbe30-icon-96.png" />
+    <Content Include="loopbe30-icon-256.png" />
+    <Content Include="loopbe30-setup-logo.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Bal.wixext" Version="4.0.5" />
+    <PackageReference Include="WixToolset.Netfx.wixext" Version="4.0.5" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="4.0.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\api-package\api-package.wixproj" />
+  </ItemGroup>
+  <Target Name="ValidateLoopBe30Edition" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(LoopBe30Edition)' != 'Retail' and '$(LoopBe30Edition)' != 'Trial'"
+           Text="LoopBe30Edition must be either Retail or Trial." />
+  </Target>
+  <Target Name="ValidateLoopBe30Signing"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(LoopBe30Sign)' == 'true'">
+    <Error Condition="'$(LoopBe30SigningConfirmed)' != 'true'"
+           Text="Certum SimplySign readiness must be explicitly confirmed with LoopBe30SigningConfirmed=true." />
+    <Error Condition="!Exists('$(LoopBe30SigningScript)')"
+           Text="The LoopBe30 signing script was not found at $(LoopBe30SigningScript)." />
+  </Target>
+  <Target Name="SignBundleEngine" Condition="'$(LoopBe30Sign)' == 'true'">
+    <Exec Command='powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(LoopBe30SigningScript)&quot; -Path &quot;%(SignBundleEngine.FullPath)&quot; -Description &quot;$(LoopBe30BundleName)&quot; -SubjectName &quot;$(LoopBe30SigningSubject)&quot; -TimestampUrl &quot;$(LoopBe30TimestampUrl)&quot; -ConfirmSimpleSignReady' />
+  </Target>
+  <Target Name="SignBundle" Condition="'$(LoopBe30Sign)' == 'true'">
+    <Exec Command='powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(LoopBe30SigningScript)&quot; -Path &quot;%(SignBundle.FullPath)&quot; -Description &quot;$(LoopBe30BundleName)&quot; -SubjectName &quot;$(LoopBe30SigningSubject)&quot; -TimestampUrl &quot;$(LoopBe30TimestampUrl)&quot; -ConfirmSimpleSignReady' />
+  </Target>
+  <Target Name="ValidateLoopBe30BundleResources" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)LoopBe30Theme.xml')" Text="The LoopBe30 Burn theme is missing." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)LoopBe30Theme.wxl')" Text="The LoopBe30 Burn localization is missing." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)Licence.rtf')" Text="The LoopBe30 Burn EULA is missing." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)loopbe30.ico')" Text="The LoopBe30 installer icon is missing." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)loopbe30-setup-logo.png')" Text="The LoopBe30 installer logo is missing." />
+  </Target>
+</Project>
+

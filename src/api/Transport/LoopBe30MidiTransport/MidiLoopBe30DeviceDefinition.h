@@ -1,0 +1,34 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License
+// ============================================================================
+// This is part of the Windows MIDI Services App API and should be used
+// in your Windows application via an official binary distribution.
+// Further information: https://aka.ms/midi
+// ============================================================================
+
+
+#pragma once
+
+// This information is provided by the configuration manager
+
+
+struct MidiLoopBe30DeviceDefinition
+{
+    GUID AssociationId{};
+    uint8_t PortIndex{};
+
+    std::wstring EndpointName{};
+    std::wstring EndpointDescription{};
+
+    std::wstring EndpointUniqueIdentifier{};
+
+    std::wstring InstanceIdPrefix{};
+
+    std::wstring CreatedShortClientInstanceId{};
+    std::wstring CreatedEndpointInterfaceId{};
+
+
+    bool ConfiguredMuted{ false };
+    bool IsMuted{ false };
+};
+

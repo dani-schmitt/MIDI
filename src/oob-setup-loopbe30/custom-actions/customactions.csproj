@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <Platforms>x64;ARM64</Platforms>
+    <LoopBe30Sign Condition="'$(LoopBe30Sign)' == ''">false</LoopBe30Sign>
+    <LoopBe30SigningConfirmed Condition="'$(LoopBe30SigningConfirmed)' == ''">false</LoopBe30SigningConfirmed>
+    <LoopBe30SigningSubject Condition="'$(LoopBe30SigningSubject)' == ''">Daniel Schmitt</LoopBe30SigningSubject>
+    <LoopBe30TimestampUrl Condition="'$(LoopBe30TimestampUrl)' == ''">http://time.certum.pl</LoopBe30TimestampUrl>
+    <LoopBe30SigningScript Condition="'$(LoopBe30SigningScript)' == ''">$(MIDI_REPO_ROOT)build\signing\Sign-LoopBe30File.ps1</LoopBe30SigningScript>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="CustomAction.config" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Dtf.CustomAction" Version="5.0.2" />
+    <PackageReference Include="WixToolset.Dtf.WindowsInstaller" Version="5.0.2" />
+  </ItemGroup>
+
+  <Target Name="ValidateLoopBe30Signing"
+          BeforeTargets="CoreCompile"
+          Condition="'$(LoopBe30Sign)' == 'true'">
+    <Error Condition="'$(LoopBe30SigningConfirmed)' != 'true'"
+           Text="Certum SimplySign readiness must be explicitly confirmed with LoopBe30SigningConfirmed=true." />
+    <Error Condition="!Exists('$(LoopBe30SigningScript)')"
+           Text="The LoopBe30 signing script was not found at $(LoopBe30SigningScript)." />
+  </Target>
+
+  <Target Name="SignLoopBe30ManagedCustomAction"
+          BeforeTargets="PackCustomAction"
+          Condition="'$(LoopBe30Sign)' == 'true'">
+    <Exec Command='powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(LoopBe30SigningScript)&quot; -Path &quot;$(IntermediateOutputPath)$(TargetFileName)&quot; -Description &quot;LoopBe30 Installer Custom Actions&quot; -SubjectName &quot;$(LoopBe30SigningSubject)&quot; -TimestampUrl &quot;$(LoopBe30TimestampUrl)&quot; -ConfirmSimpleSignReady' />
+  </Target>
+
+  <Target Name="SignLoopBe30PackagedCustomAction"
+          AfterTargets="PackCustomAction"
+          BeforeTargets="CopyFilesToOutputDirectory"
+          Condition="'$(LoopBe30Sign)' == 'true'">
+    <Exec Command='powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(LoopBe30SigningScript)&quot; -Path &quot;$(IntermediateOutputPath)$(TargetName).CA$(TargetExt)&quot; -Description &quot;LoopBe30 Installer Custom Actions&quot; -SubjectName &quot;$(LoopBe30SigningSubject)&quot; -TimestampUrl &quot;$(LoopBe30TimestampUrl)&quot; -ConfirmSimpleSignReady' />
+  </Target>
+</Project>
+

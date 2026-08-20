@@ -1,0 +1,222 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <?define StagingSourceRootFolder=$(var.LoopBe30StagingRoot) ?>
+
+  <Package Name="$(var.LoopBe30PackageName)"
+           Manufacturer="nerds.de"
+           Version="$(var.LoopBe30MsiVersion)"
+           UpgradeCode="$(var.LoopBe30MsiUpgradeCode)"
+           Scope="perMachine"
+           Compressed="true">
+
+    <MediaTemplate EmbedCab="yes" />
+    <util:QueryNativeMachine />
+
+    <MajorUpgrade Schedule="afterInstallFinalize"
+                  DowngradeErrorMessage="A newer version of LoopBe30 is already installed." />
+
+    <?if $(var.LoopBe30Edition) = Trial ?>
+    <Upgrade Id="$(var.LoopBe30RetailMsiUpgradeCode)">
+      <UpgradeVersion Minimum="0.0.0"
+                      IncludeMinimum="yes"
+                      OnlyDetect="yes"
+                      Property="LOOPBE30_RETAIL_EDITION_FOUND" />
+    </Upgrade>
+    <Launch Condition="Installed OR NOT LOOPBE30_RETAIL_EDITION_FOUND"
+            Message="The retail version of LoopBe30 is already installed. Uninstall it before installing the Trial version." />
+    <?else?>
+    <Property Id="LOOPBE30_BURN_CROSS_EDITION" Secure="yes" />
+    <Upgrade Id="$(var.LoopBe30TrialMsiUpgradeCode)">
+      <UpgradeVersion Minimum="0.0.0"
+                      IncludeMinimum="yes"
+                      Property="LOOPBE30_TRIAL_EDITION_FOUND" />
+    </Upgrade>
+    <Launch Condition="Installed OR NOT LOOPBE30_TRIAL_EDITION_FOUND OR LOOPBE30_BURN_CROSS_EDITION = 1"
+            Message="The Trial edition of LoopBe30 is installed. Use $(var.LoopBe30RetailSetupFileName) to replace it with the Retail edition." />
+    <?endif?>
+
+    <Launch Condition="Installed OR WIX_NATIVE_MACHINE = $(var.LoopBe30NativeMachine)"
+            Message="This installer requires a native $(var.LoopBe30ArchitectureName) Windows computer. Run the installer matching this computer's architecture." />
+    <Launch Condition="Installed OR LOOPBE30_OS_SUPPORTED = 1"
+            Message="LoopBe30 2.0 requires Windows 11." />
+    <Launch Condition="Installed OR LOOPBE30_SERVICE_ABSENT &lt;&gt; 1"
+            Message="Windows MIDI Services is not available on this computer. Install all Windows updates or repair Windows MIDI Services, then run this setup again." />
+    <Launch Condition="Installed OR LOOPBE30_SERVICE_INCOMPLETE &lt;&gt; 1"
+            Message="Windows MIDI Services is present but incomplete or disabled. Install all available Windows updates or repair Windows MIDI Services, then run this setup again." />
+    <Launch Condition="Installed OR LOOPBE30_OLD_DRIVER_FOUND &lt;&gt; 1"
+            Message="The legacy LoopBe30 kernel driver is installed. Uninstall the old LoopBe30 or LoopBe30 Trial, restart Windows, and run this setup again." />
+
+    <Icon Id="LoopBe30ProductIcon" SourceFile="$(var.LoopBe30InstallerIcon)" />
+    <Property Id="ARPPRODUCTICON" Value="LoopBe30ProductIcon" />
+    <Property Id="ARPSYSTEMCOMPONENT" Value="1" />
+    <Property Id="ARPHELPLINK" Value="https://nerds.de" />
+    <Property Id="WixUnelevatedShellExecTarget" Value="[#LoopBe30MonitorExe]" />
+    <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
+    <Property Id="MSIDISABLERMRESTART" Value="1" />
+
+    <util:CloseApplication Id="CloseLoopBe30Monitor"
+                           Target="loough.exe"
+                           CloseMessage="yes"
+                           ElevatedCloseMessage="yes"
+                           PromptToContinue="no"
+                           RebootPrompt="no"
+                           TerminateProcess="0"
+                           Timeout="5" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="WINDOWS_MIDI_ROOT" Name="Windows MIDI Services">
+        <Directory Id="SERVICE_INSTALLFOLDER" Name="Service" />
+      </Directory>
+      <Directory Id="LOOPBE30_VENDOR_FOLDER" Name="nerds.de">
+        <Directory Id="LOOPBE30_INSTALLFOLDER" Name="LoopBe30" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="LOOPBE30_PROGRAMMENUFOLDER" Name="LoopBe30" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="StartupFolder" />
+
+    <Component Id="WindowsServicePlugins"
+               Bitness="always64"
+               Directory="LOOPBE30_INSTALLFOLDER"
+               Guid="$(var.LoopBe30ServicePluginsComponentGuid)">
+      <File Id="LoopBe30TransportDll"
+            Source="$(StagingSourceRootFolder)\api\$(var.Platform)\Midi2.LoopBe30MidiTransport.dll"
+            SelfRegCost="1"
+            Vital="true"
+            KeyPath="yes" />
+    </Component>
+
+    <Component Id="ConfigurationRegistryEntries"
+               Bitness="always64"
+               Directory="SERVICE_INSTALLFOLDER"
+               Guid="$(var.LoopBe30ConfigurationComponentGuid)"
+               NeverOverwrite="false">
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows MIDI Services">
+        <RegistryKey Key="Endpoint Processing Plugins" />
+        <RegistryKey Key="Transport Plugins">
+          <RegistryKey Key="Midi2LoopBe30Transport">
+            <RegistryValue Type="string" Name="CLSID" Value="{E290D555-F1A3-4ABC-9EBB-9279DC326EAD}" />
+            <RegistryValue Type="integer" Name="Enabled" Value="1" />
+          </RegistryKey>
+        </RegistryKey>
+      </RegistryKey>
+    </Component>
+
+    <Component Id="RestartService"
+               Bitness="always64"
+               Directory="SERVICE_INSTALLFOLDER"
+               Guid="$(var.LoopBe30RestartServiceComponentGuid)">
+      <ServiceControl Id="midisrv" Name="midisrv" Start="both" Stop="both" />
+    </Component>
+
+    <Component Id="LoopBe30Application"
+               Bitness="always64"
+               Directory="LOOPBE30_INSTALLFOLDER"
+               Guid="$(var.LoopBe30ApplicationComponentGuid)">
+      <File Id="LoopBe30MonitorExe"
+            Source="$(var.LoopBe30MonOutputRoot)\$(var.LoopBe30MonConfiguration)\loough.exe"
+            KeyPath="yes" />
+      <File Id="LoopBe30HelpFile"
+            Source="$(var.LoopBe30MonRoot)\hlp\loough.chm" />
+      <File Id="LoopBe30LicenseFile"
+            Name="Licence.txt"
+            Source="$(var.LoopBe30MonRoot)\hlp\Licence.txt" />
+
+      <Shortcut Id="LoopBe30MonitorStartMenuShortcut"
+                Directory="LOOPBE30_PROGRAMMENUFOLDER"
+                Name="LoopBe30 Monitor"
+                Description="Configure LoopBe30 internal MIDI ports"
+                Target="[#LoopBe30MonitorExe]"
+                WorkingDirectory="LOOPBE30_INSTALLFOLDER"
+                Icon="LoopBe30ProductIcon" />
+      <Shortcut Id="LoopBe30HelpStartMenuShortcut"
+                Directory="LOOPBE30_PROGRAMMENUFOLDER"
+                Name="LoopBe30 Help"
+                Description="LoopBe30 documentation"
+                Target="[#LoopBe30HelpFile]"
+                WorkingDirectory="LOOPBE30_INSTALLFOLDER"
+                Icon="LoopBe30ProductIcon" />
+      <Shortcut Id="LoopBe30UninstallStartMenuShortcut"
+                Directory="LOOPBE30_PROGRAMMENUFOLDER"
+                Name="Uninstall LoopBe30"
+                Description="Open Installed Apps to uninstall LoopBe30"
+                Target="[SystemFolder]control.exe"
+                Arguments="appwiz.cpl"
+                Icon="LoopBe30ProductIcon" />
+      <Shortcut Id="LoopBe30MonitorStartupShortcut"
+                Directory="StartupFolder"
+                Name="LoopBe30 Monitor"
+                Description="Start LoopBe30 Monitor after sign-in"
+                Target="[#LoopBe30MonitorExe]"
+                WorkingDirectory="LOOPBE30_INSTALLFOLDER"
+                Icon="LoopBe30ProductIcon" />
+
+      <RemoveFolder Id="RemoveLoopBe30ProgramMenuFolder"
+                    Directory="LOOPBE30_PROGRAMMENUFOLDER"
+                    On="uninstall" />
+    </Component>
+
+    <Feature Id="WindowsMIDIServices" Title="LoopBe30 for Windows MIDI Services">
+      <ComponentRef Id="WindowsServicePlugins" />
+      <ComponentRef Id="ConfigurationRegistryEntries" />
+      <ComponentRef Id="RestartService" />
+      <ComponentRef Id="LoopBe30Application" />
+    </Feature>
+
+    <Binary Id="CustomActionBinary"
+            SourceFile="$(var.customactions.TargetDir)$(var.customactions.TargetName).CA.dll" />
+
+    <CustomAction Id="Action_CheckLoopBe30Prerequisites"
+                  Execute="immediate"
+                  BinaryRef="CustomActionBinary"
+                  DllEntry="CheckLoopBe30Prerequisites"
+                  Return="check" />
+    <CustomAction Id="Action_InitializeLoopBe30RegistryValues"
+                  Impersonate="no"
+                  Execute="deferred"
+                  BinaryRef="CustomActionBinary"
+                  DllEntry="InitializeLoopBe30RegistryValues"
+                  Return="check" />
+    <CustomAction Id="Action_RemoveLoopBe30RegistryValues"
+                  Impersonate="no"
+                  Execute="deferred"
+                  BinaryRef="CustomActionBinary"
+                  DllEntry="RemoveLoopBe30RegistryValues"
+                  Return="check" />
+    <CustomAction Id="Action_LaunchLoopBe30Mon"
+                  Execute="immediate"
+                  BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)"
+                  DllEntry="WixUnelevatedShellExec"
+                  Return="ignore" />
+
+    <InstallUISequence>
+      <Custom Action="Action_CheckLoopBe30Prerequisites"
+              Before="LaunchConditions"
+              Condition="NOT Installed AND NOT (REMOVE = &quot;ALL&quot;)" />
+    </InstallUISequence>
+
+    <InstallExecuteSequence>
+      <Custom Action="Action_CheckLoopBe30Prerequisites"
+              Before="LaunchConditions"
+              Condition="NOT Installed AND NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="Wix4CloseApplications_$(sys.BUILDARCHSHORT)"
+              After="InstallInitialize"
+              Condition="VersionNT &gt; 400" />
+      <Custom Action="Action_InitializeLoopBe30RegistryValues"
+              After="StopServices"
+              Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="Action_RemoveLoopBe30RegistryValues"
+              Before="RemoveFiles"
+              Condition="REMOVE = &quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="Action_LaunchLoopBe30Mon"
+              After="InstallFinalize"
+              Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+    </InstallExecuteSequence>
+
+  </Package>
+</Wix>
+

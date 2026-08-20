@@ -25,5 +25,17 @@ The target builds and signs the x64 and ARM64 Retail and Trial artifacts from
 the inside outward. It writes the four public setup executables and
 `ipmidi-signing-manifest.json` to a timestamped folder under `build\release`.
 
+LoopBe30 uses the same guarded workflow:
+
+```powershell
+.\build.cmd T_BuildLoopBe30PluginInstaller
+# Review the unsigned x64/ARM64 matrix, then sign in to SimplySign.
+.\build.cmd T_BuildSignedLoopBe30PluginInstaller --confirm-simple-sign-ready
+```
+
+Its signed target writes `loopbe30-signing-manifest.json` and verifies the
+transport DLLs, `loough.exe` files, custom actions, MSIs, Burn engines, and all
+four final bundles.
+
 Never store certificate private keys, PINs, or a replacement certificate's
 thumbprint in the repository.

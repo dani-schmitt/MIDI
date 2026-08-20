@@ -378,3 +378,7 @@ build/dependencies/winui/WindowsAppRuntimeInstall-arm64.exe
 *.winmd
 *.dll
 *.exe
+
+# Local LoopBe30 diagnostics
+/build/loopbe30/IpMidiTrace.csv
+/build/loopbe30/LoopBe30Trace.csv

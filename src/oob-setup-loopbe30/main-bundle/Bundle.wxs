@@ -1,0 +1,164 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <?define DependenciesSourceRootFolder=$(env.MIDI_REPO_ROOT)\build\dependencies ?>
+
+  <Bundle Name="$(var.LoopBe30BundleName)"
+          Manufacturer="nerds.de"
+          Version="$(var.LoopBe30BundleVersion)"
+          UpgradeCode="$(var.LoopBe30BundleUpgradeCode)"
+          IconSourceFile="loopbe30.ico"
+          Copyright="Copyright (C) 2005 - 2026 nerds.de. All rights reserved."
+          AboutUrl="https://nerds.de">
+
+    <?if $(var.LoopBe30Edition) = Trial ?>
+    <RelatedBundle Id="$(var.LoopBe30RetailBundleUpgradeCode)" Action="detect" />
+    <Variable Name="LoopBe30RetailProductState" Type="numeric" Value="2" />
+    <util:ProductSearch Id="LoopBe30RetailProductSearch"
+                        UpgradeCode="$(var.LoopBe30RetailMsiUpgradeCode)"
+                        Variable="LoopBe30RetailProductState"
+                        Result="state" />
+    <bal:Condition Message="The retail version of LoopBe30 is already installed. Uninstall it before installing the Trial version."
+                   Condition="WixBundleInstalled OR NOT (LoopBe30RetailProductState = 5)" />
+    <?else?>
+    <RelatedBundle Id="$(var.LoopBe30TrialBundleUpgradeCode)" Action="upgrade" />
+    <?endif?>
+
+    <Variable Name="DevModeEnabled" Type="numeric" Value="0" />
+    <Variable Name="MidiServiceExeExists" Type="numeric" Value="0" />
+    <Variable Name="MidiServiceRegistryExists" Type="numeric" Value="0" />
+    <Variable Name="MidiServiceStartType" Type="numeric" Value="4" />
+    <Variable Name="MidiServiceComRegistered" Type="numeric" Value="0" />
+    <Variable Name="Wdmaud2Midi" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi1" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi2" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi3" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi4" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi5" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi6" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi7" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi8" Type="string" Value="" />
+    <Variable Name="Wdmaud2Midi9" Type="string" Value="" />
+    <Variable Name="LoopBe30OldRetail64" Type="numeric" Value="0" />
+    <Variable Name="LoopBe30OldTrial64" Type="numeric" Value="0" />
+    <Variable Name="LoopBe30OldRetail32" Type="numeric" Value="0" />
+    <Variable Name="LoopBe30OldTrial32" Type="numeric" Value="0" />
+    <Variable Name="LoopBe30OldService" Type="numeric" Value="0" />
+
+    <util:RegistrySearch Id="DevModeSearch"
+                         Root="HKLM"
+                         Key="SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
+                         Value="AllowDevelopmentWithoutDevLicense"
+                         Variable="DevModeEnabled"
+                         Result="value"
+                         Bitness="always64" />
+    <util:FileSearch Id="MidiServiceExeSearch"
+                     Path="[System64Folder]midisrv.exe"
+                     Variable="MidiServiceExeExists"
+                     Result="exists" />
+    <util:RegistrySearch Id="MidiServiceRegistrySearch"
+                         Root="HKLM"
+                         Key="SYSTEM\CurrentControlSet\Services\midisrv"
+                         Value="Start"
+                         Variable="MidiServiceRegistryExists"
+                         Result="exists"
+                         Bitness="always64" />
+    <util:RegistrySearch Id="MidiServiceStartTypeSearch"
+                         Root="HKLM"
+                         Key="SYSTEM\CurrentControlSet\Services\midisrv"
+                         Value="Start"
+                         Variable="MidiServiceStartType"
+                         Result="value"
+                         Bitness="always64" />
+    <util:RegistrySearch Id="MidiServiceComSearch"
+                         Root="HKCR"
+                         Key="CLSID\{2BA15E4E-5417-4A66-85B8-2B2260EFBC84}\InProcServer32"
+                         Variable="MidiServiceComRegistered"
+                         Result="exists"
+                         Bitness="always64" />
+
+    <util:RegistrySearch Id="Wdmaud2MidiSearch" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi" Variable="Wdmaud2Midi" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi1Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi1" Variable="Wdmaud2Midi1" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi2Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi2" Variable="Wdmaud2Midi2" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi3Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi3" Variable="Wdmaud2Midi3" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi4Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi4" Variable="Wdmaud2Midi4" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi5Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi5" Variable="Wdmaud2Midi5" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi6Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi6" Variable="Wdmaud2Midi6" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi7Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi7" Variable="Wdmaud2Midi7" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi8Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi8" Variable="Wdmaud2Midi8" Result="value" Bitness="always64" />
+    <util:RegistrySearch Id="Wdmaud2Midi9Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion\Drivers32" Value="midi9" Variable="Wdmaud2Midi9" Result="value" Bitness="always64" />
+
+    <util:RegistrySearch Id="LoopBe30OldRetail64Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LoopBe30" Variable="LoopBe30OldRetail64" Result="exists" Bitness="always64" />
+    <util:RegistrySearch Id="LoopBe30OldTrial64Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LoopBe30 Trial" Variable="LoopBe30OldTrial64" Result="exists" Bitness="always64" />
+    <util:RegistrySearch Id="LoopBe30OldRetail32Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LoopBe30" Variable="LoopBe30OldRetail32" Result="exists" Bitness="always32" />
+    <util:RegistrySearch Id="LoopBe30OldTrial32Search" Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\LoopBe30 Trial" Variable="LoopBe30OldTrial32" Result="exists" Bitness="always32" />
+    <util:RegistrySearch Id="LoopBe30OldServiceSearch" Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\LoopBe30" Value="Start" Variable="LoopBe30OldService" Result="exists" Bitness="always64" />
+    <bal:Condition Message="This installer requires a native $(var.LoopBe30ArchitectureName) Windows computer. Run the installer matching this computer's architecture."
+                   Condition="WixBundleInstalled OR NativeMachine = $(var.LoopBe30NativeMachine)" />
+
+    <bal:Condition Message="LoopBe30 for Windows MIDI Services requires Windows 11."
+                   Condition="WixBundleInstalled OR (VersionNT64 &gt;= v10.0 AND WindowsBuildNumber &gt;= 22000)" />
+
+    <bal:Condition Message="Windows MIDI Services is not available on this computer. LoopBe30 2.0 cannot be installed. Install all available Windows updates, then run this setup again."
+                   Condition="WixBundleInstalled OR MidiServiceExeExists OR MidiServiceRegistryExists OR MidiServiceComRegistered OR (Wdmaud2Midi ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi1 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi2 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi3 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi4 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi5 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi6 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi7 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi8 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi9 ~= &quot;wdmaud2.drv&quot;)" />
+
+    <bal:Condition Message="Windows MIDI Services is present but incomplete or disabled. Install all available Windows updates or repair Windows MIDI Services, then run this setup again."
+                   Condition="WixBundleInstalled OR NOT (MidiServiceExeExists OR MidiServiceRegistryExists OR MidiServiceComRegistered OR (Wdmaud2Midi ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi1 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi2 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi3 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi4 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi5 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi6 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi7 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi8 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi9 ~= &quot;wdmaud2.drv&quot;)) OR (MidiServiceExeExists AND MidiServiceRegistryExists AND MidiServiceStartType &lt;&gt; 4 AND MidiServiceComRegistered AND (Wdmaud2Midi ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi1 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi2 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi3 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi4 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi5 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi6 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi7 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi8 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi9 ~= &quot;wdmaud2.drv&quot;))" />
+
+    <bal:Condition Message="An older LoopBe30 kernel-driver installation was detected. Uninstall LoopBe30 or LoopBe30 Trial in Settings &gt; Apps &gt; Installed apps, restart Windows, and run this setup again. The MIDI Services transport has not been installed."
+                   Condition="WixBundleInstalled OR NOT (LoopBe30OldRetail64 OR LoopBe30OldTrial64 OR LoopBe30OldRetail32 OR LoopBe30OldTrial32 OR LoopBe30OldService) OR NOT (MidiServiceExeExists AND MidiServiceRegistryExists AND MidiServiceStartType &lt;&gt; 4 AND MidiServiceComRegistered AND (Wdmaud2Midi ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi1 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi2 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi3 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi4 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi5 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi6 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi7 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi8 ~= &quot;wdmaud2.drv&quot; OR Wdmaud2Midi9 ~= &quot;wdmaud2.drv&quot;))" />
+
+    <?if $(var.LoopBe30RequireDeveloperMode) = true ?>
+    <bal:Condition Message="Developer mode in Windows Settings must be enabled while installing this unsigned development build of LoopBe30."
+                   Condition="WixBundleInstalled OR DevModeEnabled = 1" />
+    <?endif?>
+
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication Theme="rtfLicense"
+                                              ThemeFile="LoopBe30Theme.xml"
+                                              LocalizationFile="LoopBe30Theme.wxl"
+                                              LicenseFile="Licence.rtf"
+                                              LogoFile="loopbe30-setup-logo.png"
+                                              SuppressOptionsUI="yes"
+                                              SuppressRepair="no"
+                                              ShowVersion="true" />
+    </BootstrapperApplication>
+
+    <Chain>
+      <PackageGroupRef Id="Prerequisites" />
+      <PackageGroupRef Id="MidiServicesPackages" />
+    </Chain>
+  </Bundle>
+
+  <Fragment>
+    <PackageGroup Id="Prerequisites">
+      <ExePackage Id="VisualCppRuntime"
+                  Vital="true"
+                  DisplayName="Microsoft Visual C++ Runtime"
+                  SourceFile="$(DependenciesSourceRootFolder)\VC_redist.x64.exe"
+                  Compressed="yes"
+                  InstallArguments="/install /passive /norestart /log midi_vcruntime_install_log.txt"
+                  Permanent="true">
+        <!-- Microsoft's current x64 package also contains ARM64 binaries. 1638
+             means an equal or newer VC++ runtime is already installed. -->
+        <ExitCode Value="1638" Behavior="success" />
+      </ExePackage>
+    </PackageGroup>
+
+    <PackageGroup Id="MidiServicesPackages">
+      <MsiPackage Id="$(var.LoopBe30MsiPackageId)"
+                  DisplayName="$(var.LoopBe30BundleName)"
+                  Vital="true"
+                  Permanent="no"
+                  Visible="no"
+                  Compressed="yes"
+                  SourceFile="$(var.LoopBe30MsiOutputName).msi">
+        <?if $(var.LoopBe30Edition) = Retail ?>
+        <MsiProperty Name="LOOPBE30_BURN_CROSS_EDITION" Value="1" />
+        <?endif?>
+      </MsiPackage>
+    </PackageGroup>
+  </Fragment>
+</Wix>
+
