@@ -7,7 +7,7 @@
     <IpMidiTimestampUrl Condition="'$(IpMidiTimestampUrl)' == ''">http://time.certum.pl</IpMidiTimestampUrl>
     <IpMidiSigningScript Condition="'$(IpMidiSigningScript)' == ''">$(MIDI_REPO_ROOT)build\signing\Sign-IpMidiFile.ps1</IpMidiSigningScript>
     <SignOutput Condition="'$(IpMidiSign)' == 'true'">true</SignOutput>
-    <IpMidiMsiVersion>2.0.1</IpMidiMsiVersion>
+    <IpMidiMsiVersion>2.0.2</IpMidiMsiVersion>
     <InstallerPlatform Condition="'$(Platform)' == 'ARM64'">arm64</InstallerPlatform>
     <InstallerPlatform Condition="'$(Platform)' != 'ARM64'">x64</InstallerPlatform>
     <IpMidiPlatformSuffix Condition="'$(Platform)' == 'ARM64'">-arm64</IpMidiPlatformSuffix>

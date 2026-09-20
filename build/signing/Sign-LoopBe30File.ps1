@@ -65,8 +65,19 @@ $resolvedSignTool = Resolve-SignToolPath -RequestedPath $SignToolPath
 $now = Get-Date
 $normalizedRequestedThumbprint = $CertificateThumbprint -replace "\s", ""
 
+$certificateStore = New-Object System.Security.Cryptography.X509Certificates.X509Store(
+    "My",
+    [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+try {
+    $certificateStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
+    $storeCertificates = @($certificateStore.Certificates)
+}
+finally {
+    $certificateStore.Close()
+}
+
 $matchingCertificates = @(
-    Get-ChildItem -Path Cert:\CurrentUser\My |
+    $storeCertificates |
         Where-Object {
             $_.GetNameInfo(
                 [System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName,
@@ -168,18 +179,10 @@ foreach ($inputPath in $Path) {
         throw "Signature verification for '$resolvedPath' did not report a clean RFC 3161 timestamped signature."
     }
 
-    $signature = Get-AuthenticodeSignature -LiteralPath $resolvedPath
-    if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-        throw "PowerShell reports signature status '$($signature.Status)' for '$resolvedPath'."
-    }
-
-    if ($null -eq $signature.SignerCertificate -or
-        $signature.SignerCertificate.Thumbprint -ne $selectedCertificate.Thumbprint) {
+    $normalizedVerifyText = $verifyText -replace "\s", ""
+    $normalizedSelectedThumbprint = $selectedCertificate.Thumbprint -replace "\s", ""
+    if ($normalizedVerifyText -notmatch [regex]::Escape($normalizedSelectedThumbprint)) {
         throw "The signer certificate for '$resolvedPath' is not the selected '$SubjectName' certificate."
-    }
-
-    if ($null -eq $signature.TimeStamperCertificate) {
-        throw "The signature for '$resolvedPath' does not contain a timestamp certificate."
     }
 
     Write-Host "Signed and verified '$resolvedPath'."

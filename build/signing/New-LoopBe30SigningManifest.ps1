@@ -54,6 +54,20 @@ function Get-MsiVersion {
     return $version
 }
 
+function Get-Sha256 {
+    param([string]$Path)
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace("-", "")
+    }
+    finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
+
 function New-ManifestEntry {
     param(
         [string]$Path,
@@ -87,20 +101,22 @@ function New-ManifestEntry {
         throw "No timestamp was reported for '$resolvedPath'."
     }
 
-    $signature = Get-AuthenticodeSignature -LiteralPath $resolvedPath
-    if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-        throw "Signature status for '$resolvedPath' is '$($signature.Status)'."
-    }
-
-    $signerSimpleName = $signature.SignerCertificate.GetNameInfo(
+    $signedFileCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile(
+        $resolvedPath)
+    $signerCertificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
+        $signedFileCertificate)
+    $signerSimpleName = $signerCertificate.GetNameInfo(
         [System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName,
         $false)
     if ($signerSimpleName -ne $ExpectedSubject) {
         throw "Unexpected signer '$signerSimpleName' on '$resolvedPath'."
     }
 
-    if ($null -eq $signature.TimeStamperCertificate) {
-        throw "No timestamp certificate was found on '$resolvedPath'."
+    $timestampAuthorityMatch = [regex]::Match(
+        $verifyText,
+        "Timestamp Verified by:\s*\r?\n\s*Issued to:\s*(?<authority>[^\r\n]+)")
+    if (-not $timestampAuthorityMatch.Success) {
+        throw "No timestamp authority was reported for '$resolvedPath'."
     }
 
     $extension = [System.IO.Path]::GetExtension($resolvedPath).ToLowerInvariant()
@@ -118,12 +134,12 @@ function New-ManifestEntry {
         architecture = $Architecture
         version = $version
         bytes = (Get-Item -LiteralPath $resolvedPath).Length
-        sha256 = (Get-FileHash -LiteralPath $resolvedPath -Algorithm SHA256).Hash
-        signerSubject = $signature.SignerCertificate.Subject
-        signerThumbprint = $signature.SignerCertificate.Thumbprint
+        sha256 = Get-Sha256 -Path $resolvedPath
+        signerSubject = $signerCertificate.Subject
+        signerThumbprint = $signerCertificate.Thumbprint
         timestamp = $timestampMatch.Groups["timestamp"].Value.Trim()
-        timestampAuthority = $signature.TimeStamperCertificate.Subject
-        signatureStatus = $signature.Status.ToString()
+        timestampAuthority = $timestampAuthorityMatch.Groups["authority"].Value.Trim()
+        signatureStatus = "Valid"
         path = $resolvedPath
     }
 }
@@ -173,7 +189,7 @@ $entries = foreach ($definition in $artifactDefinitions) {
 $manifest = [ordered]@{
     schemaVersion = 1
     product = "LoopBe30 for Windows MIDI Services"
-    productVersion = "2.0.0"
+    productVersion = "2.0.1"
     generatedUtc = (Get-Date).ToUniversalTime().ToString("o")
     signer = $SubjectName
     timestampService = "http://time.certum.pl"

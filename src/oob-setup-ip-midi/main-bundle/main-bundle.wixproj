@@ -21,7 +21,7 @@
     <OutputName Condition="'$(IpMidiEdition)' == 'Trial'">setupipmiditrial$(IpMidiPlatformSuffix)</OutputName>
     <IpMidiBundleName Condition="'$(IpMidiEdition)' == 'Retail'">ipMIDI Ethernet Ports for MIDI Services</IpMidiBundleName>
     <IpMidiBundleName Condition="'$(IpMidiEdition)' == 'Trial'">ipMIDI Ethernet Ports for MIDI Services (Trial)</IpMidiBundleName>
-    <IpMidiBundleVersion>2.0.1</IpMidiBundleVersion>
+    <IpMidiBundleVersion>2.0.2</IpMidiBundleVersion>
     <IpMidiRetailBundleUpgradeCode>410c75f8-4aa0-4e65-86d1-ed76df1e7dff</IpMidiRetailBundleUpgradeCode>
     <IpMidiTrialBundleUpgradeCode>f6176fc2-a1cf-43bc-8136-ed1381f5fc2a</IpMidiTrialBundleUpgradeCode>
     <IpMidiBundleUpgradeCode Condition="'$(IpMidiEdition)' == 'Retail'">$(IpMidiRetailBundleUpgradeCode)</IpMidiBundleUpgradeCode>

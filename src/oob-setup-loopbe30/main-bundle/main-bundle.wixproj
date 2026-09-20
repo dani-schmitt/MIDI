@@ -19,7 +19,7 @@
     <OutputName Condition="'$(LoopBe30Edition)' == 'Trial'">setuploopbe30trial$(LoopBe30PlatformSuffix)</OutputName>
     <LoopBe30BundleName Condition="'$(LoopBe30Edition)' == 'Retail'">LoopBe30 for Windows MIDI Services</LoopBe30BundleName>
     <LoopBe30BundleName Condition="'$(LoopBe30Edition)' == 'Trial'">LoopBe30 for Windows MIDI Services (Trial)</LoopBe30BundleName>
-    <LoopBe30BundleVersion>2.0.0</LoopBe30BundleVersion>
+    <LoopBe30BundleVersion>2.0.1</LoopBe30BundleVersion>
     <LoopBe30RetailBundleUpgradeCode>4b6d855e-3fa5-463c-aaa0-139c8c1e607b</LoopBe30RetailBundleUpgradeCode>
     <LoopBe30TrialBundleUpgradeCode>b294c394-f5ad-4088-9c82-b4bf57f9f255</LoopBe30TrialBundleUpgradeCode>
     <LoopBe30BundleUpgradeCode Condition="'$(LoopBe30Edition)' == 'Retail'">$(LoopBe30RetailBundleUpgradeCode)</LoopBe30BundleUpgradeCode>

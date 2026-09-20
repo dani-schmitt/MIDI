@@ -279,7 +279,7 @@ class Build : NukeBuild
 
             _thisReleaseFolder =
                 ReleaseRootFolder /
-                $"ipMIDI 2.0.1 Signed ({DateTime.Now:yyyy-MM-dd HH-mm-ss})";
+                $"ipMIDI 2.0.2 Signed ({DateTime.Now:yyyy-MM-dd HH-mm-ss})";
             ThisReleaseFolder.CreateDirectory();
         });
 
@@ -1004,7 +1004,7 @@ class Build : NukeBuild
                 "-SubjectName", IpMidiSigningSubject);
 
             Console.WriteLine(
-                $"\nSigned ipMIDI 2.0.1 release artifacts: {ThisReleaseFolder}");
+                $"\nSigned ipMIDI 2.0.2 release artifacts: {ThisReleaseFolder}");
             foreach (var item in BuiltIpMidiInstallers)
             {
                 Console.WriteLine($"  {item.Key.PadRight(15)} {item.Value}");

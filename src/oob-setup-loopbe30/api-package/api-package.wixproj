@@ -7,7 +7,7 @@
     <LoopBe30TimestampUrl Condition="'$(LoopBe30TimestampUrl)' == ''">http://time.certum.pl</LoopBe30TimestampUrl>
     <LoopBe30SigningScript Condition="'$(LoopBe30SigningScript)' == ''">$(MIDI_REPO_ROOT)build\signing\Sign-LoopBe30File.ps1</LoopBe30SigningScript>
     <SignOutput Condition="'$(LoopBe30Sign)' == 'true'">true</SignOutput>
-    <LoopBe30MsiVersion>2.0.0</LoopBe30MsiVersion>
+    <LoopBe30MsiVersion>2.0.1</LoopBe30MsiVersion>
     <InstallerPlatform Condition="'$(Platform)' == 'ARM64'">arm64</InstallerPlatform>
     <InstallerPlatform Condition="'$(Platform)' != 'ARM64'">x64</InstallerPlatform>
     <LoopBe30PlatformSuffix Condition="'$(Platform)' == 'ARM64'">-arm64</LoopBe30PlatformSuffix>

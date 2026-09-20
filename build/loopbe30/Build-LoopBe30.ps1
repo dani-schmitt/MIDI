@@ -37,7 +37,7 @@ $signingRoot = Join-Path $RepositoryRoot "build\signing"
 $signScript = Join-Path $signingRoot "Sign-LoopBe30File.ps1"
 $manifestScript = Join-Path $signingRoot "New-LoopBe30SigningManifest.ps1"
 $releaseRoot = Join-Path $RepositoryRoot (
-    "build\release\LoopBe30 2.0.0 {0} ({1})" -f `
+    "build\release\LoopBe30 2.0.1 {0} ({1})" -f `
         $(if ($Signed) { "Signed" } elseif ($X64RetailInstallerOnly) { "Unsigned x64 Retail" } elseif ($X64TrialInstallerOnly) { "Unsigned x64 Trial" } else { "Unsigned" }),
         (Get-Date -Format "yyyy-MM-dd HH-mm-ss"))
 
